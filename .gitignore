@@ -1,0 +1,19 @@
+# build
+/bin/
+/dist/
+/web/dist/
+/web/node_modules/
+/THIRD_PARTY_LICENSES/
+
+# local runtime data & secrets
+/data/
+*.db
+*.db-wal
+*.db-shm
+jaga.yml
+.env
+
+# os / editor
+.DS_Store
+.idea/
+.vscode/

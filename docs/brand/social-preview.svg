@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" font-family="Inter, -apple-system, Segoe UI, Arial, sans-serif">
+  <defs><clipPath id="c"><rect width="1280" height="640"/></clipPath></defs>
+  <g clip-path="url(#c)">
+  <rect width="1280" height="640" fill="#0B0F17"/>
+  <circle cx="1130" cy="110" r="260" fill="#F5A524" fill-opacity="0.06"/>
+  <circle cx="1130" cy="110" r="130" fill="#F5A524" fill-opacity="0.06"/>
+  <g transform="translate(112 168) scale(4)">
+    <g fill="none" stroke="#F4F6F9" stroke-width="6" stroke-linecap="round">
+      <path d="M12 27V52a9 9 0 0 1-9 9"/>
+      <circle cx="33" cy="36" r="9"/><path d="M42 27V45"/>
+      <circle cx="63" cy="36" r="9"/><path d="M72 27V52a9 9 0 0 1-9 9"/>
+      <circle cx="93" cy="36" r="9"/><path d="M102 27V45"/>
+    </g>
+    <circle cx="12" cy="13" r="8" fill="#F5A524" fill-opacity="0.2"/>
+    <circle cx="12" cy="13" r="4.5" fill="#F5A524"/>
+  </g>
+  <text x="116" y="488" font-size="40" font-weight="600" fill="#F4F6F9">Lightweight self-hosted NVR.</text>
+  <text x="116" y="540" font-size="30" fill="#8792A8">One binary. No transcoding. RTSP · ONVIF · WebRTC</text>
+  <g transform="translate(924 500)">
+    <rect width="240" height="56" rx="28" fill="#111723" stroke="#263043" stroke-width="2"/>
+    <circle cx="34" cy="28" r="9" fill="#F2545B"/>
+    <text x="56" y="38" font-size="26" font-weight="600" fill="#F4F6F9" font-family="JetBrains Mono, SF Mono, Menlo, monospace">jaga start</text>
+  </g>
+  </g>
+</svg>

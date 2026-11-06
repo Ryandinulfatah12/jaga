@@ -1,0 +1,77 @@
+/* Jaga design tokens. Sumber kebenaran palet; lihat docs/07-branding.md. */
+
+:root {
+  /* Malam: netral biru-arang */
+  --malam-50: #F4F6F9;
+  --malam-100: #E6E9EF;
+  --malam-200: #CDD3DE;
+  --malam-300: #A9B2C3;
+  --malam-400: #8792A8;
+  --malam-500: #56627A;
+  --malam-600: #3A4559;
+  --malam-700: #263043;
+  --malam-800: #1A2231;
+  --malam-900: #111723;
+  --malam-950: #0B0F17;
+
+  /* Lentera: amber, warna brand */
+  --lentera-50: #FFF8E6;
+  --lentera-100: #FEEDC2;
+  --lentera-200: #FDDB85;
+  --lentera-300: #FCC648;
+  --lentera-400: #FBB534;
+  --lentera-500: #F5A524;
+  --lentera-600: #C27608;
+  --lentera-700: #9C5C05;
+  --lentera-800: #7A4708;
+  --lentera-900: #5C360B;
+
+  /* Status */
+  --rekam-400: #F87177;
+  --rekam-500: #F2545B;
+  --rekam-600: #C9262E;
+  --aman-400: #5BDB98;
+  --aman-500: #2FCB7A;
+  --aman-600: #13814B;
+
+  --font-sans: "Inter", -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+
+  /* Semantik: dark adalah default (UI NVR dipakai di ruang jaga/malam) */
+  --jg-bg: var(--malam-950);
+  --jg-surface: var(--malam-900);
+  --jg-raised: var(--malam-800);
+  --jg-border: var(--malam-700);
+  --jg-text: var(--malam-50);
+  --jg-text-muted: var(--malam-400);
+  --jg-accent: var(--lentera-500);
+  --jg-accent-hover: var(--lentera-400);
+  --jg-on-accent: var(--malam-950);
+  --jg-accent-text: var(--lentera-400);
+  --jg-rec: var(--rekam-500);
+  --jg-online: var(--aman-500);
+  --jg-offline: var(--malam-500);
+  --jg-motion: rgb(245 165 36 / 0.35);
+  --jg-focus: var(--lentera-400);
+}
+
+:root[data-theme="light"] {
+  --jg-bg: #FFFFFF;
+  --jg-surface: var(--malam-50);
+  --jg-raised: #FFFFFF;
+  --jg-border: var(--malam-200);
+  --jg-text: var(--malam-900);
+  --jg-text-muted: var(--malam-500);
+  --jg-accent: var(--lentera-500);
+  --jg-accent-hover: var(--lentera-400);
+  --jg-on-accent: var(--malam-950);
+  --jg-accent-text: var(--lentera-700);
+  --jg-rec: var(--rekam-600);
+  --jg-online: var(--aman-600);
+  --jg-offline: var(--malam-400);
+  --jg-motion: rgb(245 165 36 / 0.30);
+  --jg-focus: var(--lentera-600);
+}
