@@ -261,13 +261,13 @@ Estimasi total 7–10 minggu kerja part-time. Setiap fase menghasilkan sesuatu y
 - [x] **Spike**: mediamtx + FFmpeg `-f segment -segment_list pipe:1` + kill/stall, untuk membuktikan index segmen andal ([hasil](spikes/segment-index.md))
 - [x] Init repo Go, struktur folder, Makefile, lint (`golangci-lint`), CI build
 - [x] CI kepatuhan: `go-licenses` dengan allowlist, license checker `web/`, cek DCO, header SPDX, `govulncheck`, Dependabot
-- [ ] Aktifkan GitHub private vulnerability reporting dan proteksi branch `main`
+- [x] Aktifkan GitHub private vulnerability reporting dan proteksi branch `main` (ruleset: tanpa hapus/force push, wajib PR, check `Build & test`, `Lint`, `Compliance`, `DCO`)
 - [x] Pilih driver SQLite (`modernc.org/sqlite`) + tool migrasi
 - [x] Tetapkan identitas proyek: repo `github.com/ryandinulfatah12/jaga` (akun pribadi, **tanpa org**), image `ghcr.io/ryandinulfatah12/jaga`, module path Go `github.com/ryandinulfatah12/jaga`. Disclaimer di README bagian Maintainer ([checklist branding](#checklist-sebelum-publikasi))
 - [x] Lisensi Apache-2.0, `LICENSE`, `NOTICE`, `CONTRIBUTING.md` (DCO), `SECURITY.md`, `CODE_OF_CONDUCT.md`, `THIRD_PARTY_NOTICES.md`
 - [x] Isi kontak di `CODE_OF_CONDUCT.md`
 - [ ] Cek merek "Jaga" di PDKI & WIPO (kelas 9, 42)
-- [ ] Pasang aset brand: README dengan wordmark (sudah), upload social preview di Settings repo
+- [x] Pasang aset brand: README dengan wordmark, social preview repo
 
 ### Fase 1 — Fondasi recording (±2 minggu)
 
@@ -591,7 +591,7 @@ Logo dan nama Jaga tidak tercakup lisensi Apache-2.0 (pasal 6). Aturan pemakaian
 ### Checklist sebelum publikasi
 
 - [x] Identitas: repo, GHCR, dan module path Go di bawah akun pribadi `ryandinulfatah12`, tanpa org (keputusan 7 Nov 2026). Domain opsional, lihat backlog
-- [ ] Upload `social-preview.png` di Settings → Social preview
+- [x] Upload `social-preview.png` di Settings → Social preview
 - [x] Lisensi Apache-2.0 + `NOTICE`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `THIRD_PARTY_NOTICES.md` ([detail](#lisensi--kepatuhan-open-source))
 - [x] Isi kontak penegakan di `CODE_OF_CONDUCT.md`
 - [ ] Cek merek di PDKI & WIPO (kelas 9, 42)

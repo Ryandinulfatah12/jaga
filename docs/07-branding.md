@@ -197,7 +197,7 @@ Logo dan nama Jaga tidak tercakup lisensi Apache-2.0 (pasal 6). Aturan pemakaian
 ### Checklist sebelum publikasi
 
 - [x] Identitas: repo, GHCR, dan module path Go di bawah akun pribadi `ryandinulfatah12`, tanpa org (keputusan 7 Nov 2026). Domain opsional, lihat backlog
-- [ ] Upload `social-preview.png` di Settings → Social preview
+- [x] Upload `social-preview.png` di Settings → Social preview
 - [x] Lisensi Apache-2.0 + `NOTICE`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `THIRD_PARTY_NOTICES.md` ([detail](09-legal.md))
 - [x] Isi kontak penegakan di `CODE_OF_CONDUCT.md`
 - [ ] Cek merek di PDKI & WIPO (kelas 9, 42)
