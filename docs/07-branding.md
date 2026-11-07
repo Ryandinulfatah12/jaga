@@ -200,4 +200,4 @@ Logo dan nama Jaga tidak tercakup lisensi Apache-2.0 (pasal 6). Aturan pemakaian
 - [x] Upload `social-preview.png` di Settings → Social preview
 - [x] Lisensi Apache-2.0 + `NOTICE`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `THIRD_PARTY_NOTICES.md` ([detail](09-legal.md))
 - [x] Isi kontak penegakan di `CODE_OF_CONDUCT.md`
-- [ ] Cek merek di PDKI & WIPO (kelas 9, 42)
+- [x] Cek merek di PDKI & WIPO (kelas 9, 42): aman di PDKI dan WIPO (dicek 7 Nov 2026, tidak ada "Jaga" di kelas 9/42 untuk software/CCTV)
