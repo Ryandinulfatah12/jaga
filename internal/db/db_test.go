@@ -68,3 +68,9 @@ DROP TABLE widgets;
 		t.Fatalf("table missing after migrate: %v", err)
 	}
 }
+
+func TestMigrateWithoutMigrations(t *testing.T) {
+	if err := Migrate(t.Context(), openTemp(t), fstest.MapFS{}); err != nil {
+		t.Fatalf("empty migration set: %v", err)
+	}
+}

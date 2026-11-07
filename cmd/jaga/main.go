@@ -2,17 +2,20 @@
 // Copyright The Jaga Authors
 
 // Command jaga is a lightweight self-hosted NVR.
-//
-// Subcommands (start, init, migrate, ...) arrive in phase 1; for now the
-// binary only reports its version so the build pipeline has something to ship.
 package main
 
 import (
-	"fmt"
+	"context"
+	"os"
+	"os/signal"
+	"syscall"
 
-	"github.com/ryandinulfatah12/jaga/internal/version"
+	"github.com/ryandinulfatah12/jaga/internal/cli"
 )
 
 func main() {
-	fmt.Println(version.String())
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	code := cli.Run(ctx, os.Args[1:], os.Stdout, os.Stderr, os.LookupEnv)
+	stop()
+	os.Exit(code)
 }
