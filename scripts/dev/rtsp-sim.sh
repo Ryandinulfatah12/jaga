@@ -36,11 +36,13 @@ clip cam2-sub -f lavfi -i testsrc=size=640x360:rate=10 \
 
 cat >"$dir/mediamtx.yml" <<EOF
 logLevel: warn
-rtspAddress: :$port
+rtspAddress: 127.0.0.1:$port
+rtspTransports: [tcp]
 rtmp: no
 hls: no
 webrtc: no
 srt: no
+moq: no
 paths:
   all_others:
 EOF
