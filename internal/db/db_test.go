@@ -4,18 +4,30 @@
 package db
 
 import (
+	"database/sql"
 	"path/filepath"
 	"testing"
 	"testing/fstest"
 )
 
-func TestOpenAppliesPragmas(t *testing.T) {
-	ctx := t.Context()
-	db, err := Open(ctx, filepath.Join(t.TempDir(), "jaga.db"))
+// openTemp opens a fresh database in a temp dir and closes it when the test ends.
+func openTemp(t *testing.T) *sql.DB {
+	t.Helper()
+	db, err := Open(t.Context(), filepath.Join(t.TempDir(), "jaga.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	t.Cleanup(func() {
+		if err := db.Close(); err != nil {
+			t.Errorf("close db: %v", err)
+		}
+	})
+	return db
+}
+
+func TestOpenAppliesPragmas(t *testing.T) {
+	ctx := t.Context()
+	db := openTemp(t)
 
 	var mode string
 	if err := db.QueryRowContext(ctx, "PRAGMA journal_mode").Scan(&mode); err != nil {
@@ -36,11 +48,7 @@ func TestOpenAppliesPragmas(t *testing.T) {
 
 func TestMigrateIsIdempotent(t *testing.T) {
 	ctx := t.Context()
-	db, err := Open(ctx, filepath.Join(t.TempDir(), "jaga.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
+	db := openTemp(t)
 
 	migrations := fstest.MapFS{
 		"00001_widgets.sql": {Data: []byte(`-- +goose Up
