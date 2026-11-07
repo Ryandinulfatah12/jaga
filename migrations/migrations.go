@@ -6,6 +6,7 @@ package migrations
 
 import "embed"
 
-// FS holds the goose migrations (NNNNN_name.sql). Empty until the first
-// migration lands; F1.02 adds `//go:embed *.sql` together with it.
+// FS holds the goose migrations (NNNNN_name.sql), applied by db.Migrate.
+//
+//go:embed *.sql
 var FS embed.FS

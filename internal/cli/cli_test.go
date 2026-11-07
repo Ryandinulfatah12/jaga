@@ -15,6 +15,8 @@ import (
 	"time"
 )
 
+const testSecret = "0123456789abcdef0123456789abcdef"
+
 // run executes the CLI with a fake environment and no config file on disk.
 func run(t *testing.T, ctx context.Context, envm map[string]string, args ...string) (int, string, string) {
 	t.Helper()
@@ -69,7 +71,9 @@ func TestExitCodes(t *testing.T) {
 		{"extra argument", nil, []string{"version", "extra"}, exitError},
 		{"bad log level", nil, []string{"--log-level", "loud", "version"}, exitError},
 		{"invalid config", map[string]string{"JAGA_STORAGE_DISK_QUOTA_PERCENT": "0"}, []string{"migrate"}, exitConfig},
-		{"missing ffmpeg", map[string]string{"JAGA_FFMPEG_PATH": "definitely-not-ffmpeg"}, []string{"start"}, exitDeps},
+		{"missing ffmpeg", map[string]string{"JAGA_FFMPEG_PATH": "definitely-not-ffmpeg", "JAGA_SECRET_KEY": testSecret}, []string{"start"}, exitDeps},
+		{"missing secret", nil, []string{"start"}, exitConfig},
+		{"short secret", map[string]string{"JAGA_SECRET_KEY": "short"}, []string{"start"}, exitConfig},
 		{"help", nil, []string{"--help"}, exitOK},
 	}
 	for _, tc := range cases {
@@ -92,7 +96,7 @@ func TestStartStopsOnCancel(t *testing.T) {
 	defer cancel()
 	// Cancel once start logs "ready", so a slow runner cannot cancel too early.
 	logs := &readyWriter{ready: cancel}
-	env := map[string]string{"JAGA_FFMPEG_PATH": self, "JAGA_DATA_DIR": t.TempDir()}
+	env := map[string]string{"JAGA_FFMPEG_PATH": self, "JAGA_DATA_DIR": t.TempDir(), "JAGA_SECRET_KEY": testSecret}
 	lookup := func(k string) (string, bool) { v, ok := env[k]; return v, ok }
 
 	done := make(chan int, 1)

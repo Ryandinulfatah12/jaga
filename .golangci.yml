@@ -9,6 +9,12 @@ linters:
     - misspell
     - noctx
     - unconvert
+  exclusions:
+    rules:
+      # Tests are full of fake camera URLs such as rtsp://admin:pass@cam/s.
+      - path: _test\.go
+        linters: [gosec]
+        text: G101
 
 formatters:
   enable:

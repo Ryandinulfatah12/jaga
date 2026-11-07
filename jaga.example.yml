@@ -11,4 +11,6 @@ go2rtc:
 storage:
   disk_quota_percent: 90
   default_retention_days: 7
-# secret_key tidak ditulis di file: set env JAGA_SECRET_KEY (enkripsi URL kamera).
+# secret_key tidak ditulis di file: set env JAGA_SECRET_KEY, minimal 32 karakter
+# (mis. `openssl rand -base64 32`). Dipakai untuk enkripsi URL kamera; kalau
+# hilang atau diganti, URL kamera yang tersimpan tidak bisa dibuka lagi. Backup!
