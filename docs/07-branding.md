@@ -200,5 +200,5 @@ Logo dan nama Jaga tidak tercakup lisensi Apache-2.0 (pasal 6). Aturan pemakaian
 - [ ] Upload `social-preview.png` di Settings → Social preview
 - [ ] Pasang `jaga-mark.svg` sebagai avatar org
 - [x] Lisensi Apache-2.0 + `NOTICE`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `THIRD_PARTY_NOTICES.md` ([detail](09-legal.md))
-- [ ] Isi kontak penegakan di `CODE_OF_CONDUCT.md`
+- [x] Isi kontak penegakan di `CODE_OF_CONDUCT.md`
 - [ ] Cek merek di PDKI & WIPO (kelas 9, 42)

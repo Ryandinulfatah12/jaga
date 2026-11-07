@@ -4,7 +4,7 @@ Estimasi total 7–10 minggu kerja part-time. Setiap fase menghasilkan sesuatu y
 
 ### Fase 0 — Riset & setup (±1 minggu)
 
-- [ ] Amati perilaku Shinobi CE secara black-box: jalankan, catat argumen FFmpeg (`ps -ef`) dan lifecycle monitor. **Jangan membuka source code-nya** ([aturan](09-legal.md#hubungan-dengan-shinobi))
+- [x] Amati perilaku Shinobi CE secara black-box: jalankan, catat argumen FFmpeg (`ps -ef`) dan lifecycle monitor. **Jangan membuka source code-nya** ([aturan](09-legal.md#hubungan-dengan-shinobi), [hasil](spikes/shinobi-blackbox.md)); lifecycle saat kamera dicabut belum diamati
 - [x] Siapkan 2 kamera uji (1 mendukung ONVIF event) atau RTSP simulator (`mediamtx` + file loop): [`scripts/dev/rtsp-sim.sh`](../scripts/dev/rtsp-sim.sh); kamera ONVIF fisik masih dibutuhkan untuk Fase 4
 - [x] Ukur bitrate & codec tiap kamera via `ffprobe`, catat main vs sub stream ([hasil](spikes/streams.md))
 - [x] **Spike**: mediamtx + FFmpeg `-f segment -segment_list pipe:1` + kill/stall, untuk membuktikan index segmen andal ([hasil](spikes/segment-index.md))
@@ -12,12 +12,12 @@ Estimasi total 7–10 minggu kerja part-time. Setiap fase menghasilkan sesuatu y
 - [x] CI kepatuhan: `go-licenses` dengan allowlist, license checker `web/`, cek DCO, header SPDX, `govulncheck`, Dependabot
 - [ ] Aktifkan GitHub private vulnerability reporting dan proteksi branch `main`
 - [x] Pilih driver SQLite (`modernc.org/sqlite`) + tool migrasi
-- [ ] Amankan nama `jaga`: org/repo GitHub, GHCR, module path Go, domain (lihat [checklist branding](07-branding.md#checklist-sebelum-publikasi))
+- [ ] Amankan nama `jaga`: org/repo GitHub, GHCR, module path Go, domain (lihat [checklist branding](07-branding.md#checklist-sebelum-publikasi)). Cek 7 Nov 2026: akun GitHub `jaga` dan domain `jaga.dev` sudah dipakai orang lain; `jaga-nvr`, `jaganvr`, `getjaga` (GitHub) serta `getjaga.dev`, `jaganvr.dev`, `jaganvr.com` masih kosong, belum ada yang didaftarkan
 - [x] Lisensi Apache-2.0, `LICENSE`, `NOTICE`, `CONTRIBUTING.md` (DCO), `SECURITY.md`, `CODE_OF_CONDUCT.md`, `THIRD_PARTY_NOTICES.md`
 - [x] Isi kontak di `CODE_OF_CONDUCT.md`
-- [ ] Pindah ke org (mis. `jaga-nvr`) **sebelum** menulis kode Go, karena module path ikut berubah
+- [ ] Pindah ke org (mis. `jaga-nvr`) **sebelum** menulis kode Go, karena module path ikut berubah. **Ditunda** (7 Nov 2026): module path tetap `github.com/ryandinulfatah12/jaga` untuk sementara; makin banyak kode Go, makin besar biaya pindahnya
 - [ ] Cek merek "Jaga" di PDKI & WIPO (kelas 9, 42)
-- [ ] Pasang aset brand: README dengan wordmark, social preview, avatar org
+- [ ] Pasang aset brand: README dengan wordmark (sudah), social preview, avatar org (menunggu org)
 
 ### Fase 1 — Fondasi recording (±2 minggu)
 
