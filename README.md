@@ -32,7 +32,7 @@ jaga start    # open http://localhost:8080
 # docker-compose.yml
 services:
   jaga:
-    image: ghcr.io/<org>/jaga:latest
+    image: ghcr.io/ryandinulfatah12/jaga:latest
     network_mode: host
     restart: unless-stopped
     volumes:
@@ -50,6 +50,10 @@ Do not expose Jaga directly to the internet. Use a VPN or a reverse proxy with H
 ## Documentation
 
 Development docs (Bahasa Indonesia) live in [`docs/`](docs/README.md): architecture, design, CLI, branding.
+
+## Maintainer
+
+Jaga is an open source project maintained from the personal GitHub account of [@Ryandinulfatah12](https://github.com/Ryandinulfatah12), not by a company or organization. Images are published under that account (`ghcr.io/ryandinulfatah12/jaga`) and the Go module path is `github.com/ryandinulfatah12/jaga`. There is no plan to move to a GitHub organization; if that ever changes, it will be announced in the release notes with a migration path.
 
 ## Credits
 

@@ -6,11 +6,12 @@
 | --- | --- | --- |
 | Stream RTSP kamera murah tidak stabil / hang tanpa error | Rekaman bolong diam-diam | Deteksi stall via progress, timeout RTSP, event `offline`, alert notifikasi |
 | Kamera H.265, browser tidak mendukung | Live view gagal | Live pakai sub-stream H.264; go2rtc fallback ke MSE; playback H.265 hanya via download |
-| Timestamp kamera melompat / NTP salah | Timeline kacau | Pakai waktu server untuk nama segmen, `-reset_timestamps 1`, simpan durasi dari ffprobe |
+| Timestamp kamera melompat / NTP salah | Timeline kacau | Waktu server saat segmen ditutup sebagai `end_ts`, `-reset_timestamps 1`, durasi dari ffprobe, nama file UTC |
+| FFmpeg tidak membuat folder tanggal baru | Rekaman semua kamera mati tiap tengah malam | Supervisor membuat folder hari ini + besok, restart jika `Failed to open segment` ([spike](spikes/segment-index.md)) |
 | Disk penuh atau HDD rusak | Kehilangan rekaman | Kuota disk, event `disk_full`, cek SMART di halaman sistem (backlog) |
 | Write amplification SQLite saat 16 kamera | Lock contention | WAL mode, satu goroutine writer dengan antrean batch insert |
 | Frame diff false positive (bayangan, hujan, IR switch) | Notifikasi spam | Mask zona, threshold per kamera, minimum durasi, cooldown notifikasi |
-| `segment_list pipe:1` tidak andal (buffering, segmen terakhir hilang saat FFmpeg di-kill) | Index segmen tidak lengkap | Spike di Fase 0; rekonsiliasi file ↔ DB saat startup dan setiap retensi |
+| `segment_list pipe:1` tidak andal (buffering, segmen terakhir hilang saat FFmpeg di-kill) | Index segmen tidak lengkap | [Spike Fase 0](spikes/segment-index.md): list andal untuk segmen yang tertutup (SIGINT, stall); segmen yang sedang ditulis saat SIGKILL hilang, sehingga rekonsiliasi file ↔ DB tetap wajib saat startup dan setiap retensi |
 
 ### Keamanan
 

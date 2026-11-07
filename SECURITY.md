@@ -5,6 +5,7 @@ Jaga handles camera credentials and video of people's homes and workplaces. We t
 ## Reporting a vulnerability
 
 **Please do not open a public issue.** Use GitHub's private vulnerability reporting: go to the repository's **Security** tab and click **Report a vulnerability**.
+If you cannot use GitHub, email dinulfatahryan@gmail.com instead.
 
 Include:
 

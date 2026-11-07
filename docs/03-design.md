@@ -17,12 +17,12 @@
 ```
 /data
   jaga.db
-  recordings/<camera_id>/<YYYY-MM-DD>/<HHMMSS>.mp4
+  recordings/<camera_id>/<YYYY-MM-DD>/<YYYYMMDD-HHMMSS>.mp4   # UTC
   snapshots/<camera_id>/<event_id>.jpg
   thumbs/<camera_id>/latest.jpg
 ```
 
-Folder per tanggal membuat retensi cukup dengan menghapus folder lama, lalu menghapus baris `segments` yang cocok.
+Folder per tanggal membuat retensi cukup dengan menghapus folder lama, lalu menghapus baris `segments` yang cocok. Nama file memuat tanggal lengkap karena segment list FFmpeg hanya mengirim nama file tanpa folder, jadi supervisor menurunkan folder dari nama itu. FFmpeg tidak membuat folder sendiri, sehingga supervisor membuat folder hari ini dan besok saat start dan tiap jam. Tanpa itu, rekaman mati tepat tengah malam ([spike](spikes/segment-index.md)).
 
 ### Perintah FFmpeg recording
 
@@ -34,17 +34,17 @@ ffmpeg -nostdin -protocol_whitelist rtsp,rtsps,rtp,udp,tcp,tls \
   -segment_format_options movflags=+frag_keyframe+empty_moov \
   -reset_timestamps 1 -strftime 1 \
   -segment_list pipe:1 -segment_list_type csv \
-  /data/recordings/<id>/%Y-%m-%d/%H%M%S.mp4
+  /data/recordings/<id>/%Y-%m-%d/%Y%m%d-%H%M%S.mp4   # env TZ=UTC
 ```
 
-Argumen dibangun sebagai slice dan dijalankan dengan `exec.Command` tanpa shell. `-protocol_whitelist` mencegah URL seperti `file:` atau `concat:` dipakai untuk membaca file lokal. `-segment_list pipe:1` membuat FFmpeg menulis nama setiap segmen yang selesai ke stdout. Supervisor membacanya lalu meng-insert baris `segments` tanpa perlu polling filesystem. Fragmented MP4 menjaga file tetap bisa diputar walau proses mati di tengah segmen.
+Argumen dibangun sebagai slice dan dijalankan dengan `exec.Command` tanpa shell. `-protocol_whitelist` mencegah URL seperti `file:` atau `concat:` dipakai untuk membaca file lokal. `-segment_list pipe:1` membuat FFmpeg menulis nama setiap segmen yang selesai ke stdout. Supervisor membacanya lalu meng-insert baris `segments` tanpa perlu polling filesystem. `end_ts` adalah waktu baris itu diterima dan `start_ts = end_ts − durasi` dari `ffprobe` file tersebut. Nama file tidak dipakai sebagai sumber waktu karena segmen pertama bisa telat ±3 s (FFmpeg baru membuka file setelah probing input), dan kolom start/end di CSV memuat offset timestamp kamera. Fragmented MP4 membuat file sering masih bisa diputar walau proses di-kill di tengah segmen, tetapi segmen itu tidak masuk list dan kadang rusak total. Karena itu rekonsiliasi saat startup dan setiap job retensi memeriksa file tanpa baris DB dengan `ffprobe`: file yang terbaca di-insert (`end_ts` = mtime), file rusak dihapus.
 
 ### State machine supervisor (per kamera)
 
 1. `idle` → `starting`: kamera enabled, spawn FFmpeg.
 2. `starting` → `running`: segmen pertama tercatat atau stderr menunjukkan frame masuk dalam 15 detik.
 3. `running` → `stalled`: tidak ada output baru selama 2× `segment_sec` atau progress (`-progress pipe:2`) berhenti 30 detik. Proses di-kill.
-4. `stalled` / `exited` → `backoff`: tunggu 2 s, 4 s, 8 s ... maks 60 s, lalu kembali ke `starting`. Event `offline` dicatat setelah 3 kali gagal.
+4. `stalled` / `exited` → `backoff`: tunggu 2 s, 4 s, 8 s ... maks 60 s, lalu kembali ke `starting`. Event `offline` dicatat setelah 3 kali gagal. Setiap exit yang tidak diminta supervisor masuk ke sini, **termasuk exit 0**, karena FFmpeg keluar dengan kode 0 saat `-timeout` RTSP habis. Exit code tidak dipakai untuk menentukan penyebab; alasannya diambil dari baris stderr terakhir.
 5. `running` → `stopping` → `idle`: kamera di-disable atau config berubah (SIGINT dulu agar segmen tertutup rapi, SIGKILL setelah 5 detik).
 
 ### Motion detection

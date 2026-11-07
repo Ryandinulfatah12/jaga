@@ -102,12 +102,12 @@ Supervisor juga men-spawn FFmpeg motion dan go2rtc (panahnya tidak digambar agar
 ```
 /data
   jaga.db
-  recordings/<camera_id>/<YYYY-MM-DD>/<HHMMSS>.mp4
+  recordings/<camera_id>/<YYYY-MM-DD>/<YYYYMMDD-HHMMSS>.mp4   # UTC
   snapshots/<camera_id>/<event_id>.jpg
   thumbs/<camera_id>/latest.jpg
 ```
 
-Folder per tanggal membuat retensi cukup dengan menghapus folder lama, lalu menghapus baris `segments` yang cocok.
+Folder per tanggal membuat retensi cukup dengan menghapus folder lama, lalu menghapus baris `segments` yang cocok. Nama file memuat tanggal lengkap karena segment list FFmpeg hanya mengirim nama file tanpa folder, jadi supervisor menurunkan folder dari nama itu. FFmpeg tidak membuat folder sendiri, sehingga supervisor membuat folder hari ini dan besok saat start dan tiap jam. Tanpa itu, rekaman mati tepat tengah malam ([spike](spikes/segment-index.md)).
 
 ### Perintah FFmpeg recording
 
@@ -119,17 +119,17 @@ ffmpeg -nostdin -protocol_whitelist rtsp,rtsps,rtp,udp,tcp,tls \
   -segment_format_options movflags=+frag_keyframe+empty_moov \
   -reset_timestamps 1 -strftime 1 \
   -segment_list pipe:1 -segment_list_type csv \
-  /data/recordings/<id>/%Y-%m-%d/%H%M%S.mp4
+  /data/recordings/<id>/%Y-%m-%d/%Y%m%d-%H%M%S.mp4   # env TZ=UTC
 ```
 
-Argumen dibangun sebagai slice dan dijalankan dengan `exec.Command` tanpa shell. `-protocol_whitelist` mencegah URL seperti `file:` atau `concat:` dipakai untuk membaca file lokal. `-segment_list pipe:1` membuat FFmpeg menulis nama setiap segmen yang selesai ke stdout. Supervisor membacanya lalu meng-insert baris `segments` tanpa perlu polling filesystem. Fragmented MP4 menjaga file tetap bisa diputar walau proses mati di tengah segmen.
+Argumen dibangun sebagai slice dan dijalankan dengan `exec.Command` tanpa shell. `-protocol_whitelist` mencegah URL seperti `file:` atau `concat:` dipakai untuk membaca file lokal. `-segment_list pipe:1` membuat FFmpeg menulis nama setiap segmen yang selesai ke stdout. Supervisor membacanya lalu meng-insert baris `segments` tanpa perlu polling filesystem. `end_ts` adalah waktu baris itu diterima dan `start_ts = end_ts − durasi` dari `ffprobe` file tersebut. Nama file tidak dipakai sebagai sumber waktu karena segmen pertama bisa telat ±3 s (FFmpeg baru membuka file setelah probing input), dan kolom start/end di CSV memuat offset timestamp kamera. Fragmented MP4 membuat file sering masih bisa diputar walau proses di-kill di tengah segmen, tetapi segmen itu tidak masuk list dan kadang rusak total. Karena itu rekonsiliasi saat startup dan setiap job retensi memeriksa file tanpa baris DB dengan `ffprobe`: file yang terbaca di-insert (`end_ts` = mtime), file rusak dihapus.
 
 ### State machine supervisor (per kamera)
 
 1. `idle` → `starting`: kamera enabled, spawn FFmpeg.
 2. `starting` → `running`: segmen pertama tercatat atau stderr menunjukkan frame masuk dalam 15 detik.
 3. `running` → `stalled`: tidak ada output baru selama 2× `segment_sec` atau progress (`-progress pipe:2`) berhenti 30 detik. Proses di-kill.
-4. `stalled` / `exited` → `backoff`: tunggu 2 s, 4 s, 8 s ... maks 60 s, lalu kembali ke `starting`. Event `offline` dicatat setelah 3 kali gagal.
+4. `stalled` / `exited` → `backoff`: tunggu 2 s, 4 s, 8 s ... maks 60 s, lalu kembali ke `starting`. Event `offline` dicatat setelah 3 kali gagal. Setiap exit yang tidak diminta supervisor masuk ke sini, **termasuk exit 0**, karena FFmpeg keluar dengan kode 0 saat `-timeout` RTSP habis. Exit code tidak dipakai untuk menentukan penyebab; alasannya diambil dari baris stderr terakhir.
 5. `running` → `stopping` → `idle`: kamera di-disable atau config berubah (SIGINT dulu agar segmen tertutup rapi, SIGKILL setelah 5 detik).
 
 ### Motion detection
@@ -205,6 +205,8 @@ jaga/
   web/                       # frontend Svelte + Vite (tokens dari docs/brand/tokens.css)
   migrations/
   scripts/fetch-ffmpeg.sh    # unduh FFmpeg LGPL ter-pin + source tarball untuk rilis
+  scripts/dev/               # simulator RTSP, probe, spike (khusus development)
+  docs/spikes/               # hasil spike & pengukuran
   LICENSE  NOTICE  THIRD_PARTY_NOTICES.md  SECURITY.md  CONTRIBUTING.md  CODE_OF_CONDUCT.md
   Dockerfile
   docker-compose.yml
@@ -238,7 +240,7 @@ secret_key: ${JAGA_SECRET_KEY}   # enkripsi URL kamera
 ```yaml
 services:
   jaga:
-    image: ghcr.io/<org>/jaga:latest
+    image: ghcr.io/ryandinulfatah12/jaga:latest
     network_mode: host
     restart: unless-stopped
     volumes:
@@ -254,18 +256,18 @@ Estimasi total 7–10 minggu kerja part-time. Setiap fase menghasilkan sesuatu y
 ### Fase 0 — Riset & setup (±1 minggu)
 
 - [ ] Amati perilaku Shinobi CE secara black-box: jalankan, catat argumen FFmpeg (`ps -ef`) dan lifecycle monitor. **Jangan membuka source code-nya** ([aturan](#hubungan-dengan-shinobi))
-- [ ] Siapkan 2 kamera uji (1 mendukung ONVIF event) atau RTSP simulator (`mediamtx` + file loop)
-- [ ] Ukur bitrate & codec tiap kamera via `ffprobe`, catat main vs sub stream
-- [ ] **Spike**: mediamtx + FFmpeg `-f segment -segment_list pipe:1` + kill/stall, untuk membuktikan index segmen andal
-- [ ] Init repo Go, struktur folder, Makefile, lint (`golangci-lint`), CI build
-- [ ] CI kepatuhan: `go-licenses` dengan allowlist, license checker `web/`, cek DCO, header SPDX, `govulncheck`, Dependabot
-- [ ] Aktifkan GitHub private vulnerability reporting dan proteksi branch `main`
-- [ ] Pilih driver SQLite (`modernc.org/sqlite`) + tool migrasi
-- [ ] Amankan nama `jaga`: org/repo GitHub, GHCR, module path Go, domain (lihat [checklist branding](#checklist-sebelum-publikasi))
+- [x] Siapkan 2 kamera uji (1 mendukung ONVIF event) atau RTSP simulator (`mediamtx` + file loop): [`scripts/dev/rtsp-sim.sh`](../scripts/dev/rtsp-sim.sh); kamera ONVIF fisik masih dibutuhkan untuk Fase 4
+- [x] Ukur bitrate & codec tiap kamera via `ffprobe`, catat main vs sub stream ([hasil](spikes/streams.md))
+- [x] **Spike**: mediamtx + FFmpeg `-f segment -segment_list pipe:1` + kill/stall, untuk membuktikan index segmen andal ([hasil](spikes/segment-index.md))
+- [x] Init repo Go, struktur folder, Makefile, lint (`golangci-lint`), CI build
+- [x] CI kepatuhan: `go-licenses` dengan allowlist, license checker `web/`, cek DCO, header SPDX, `govulncheck`, Dependabot
+- [x] Aktifkan GitHub private vulnerability reporting dan proteksi branch `main` (ruleset: tanpa hapus/force push, wajib PR, check `Build & test`, `Lint`, `Compliance`, `DCO`)
+- [x] Pilih driver SQLite (`modernc.org/sqlite`) + tool migrasi
+- [x] Tetapkan identitas proyek: repo `github.com/ryandinulfatah12/jaga` (akun pribadi, **tanpa org**), image `ghcr.io/ryandinulfatah12/jaga`, module path Go `github.com/ryandinulfatah12/jaga`. Disclaimer di README bagian Maintainer ([checklist branding](#checklist-sebelum-publikasi))
 - [x] Lisensi Apache-2.0, `LICENSE`, `NOTICE`, `CONTRIBUTING.md` (DCO), `SECURITY.md`, `CODE_OF_CONDUCT.md`, `THIRD_PARTY_NOTICES.md`
-- [ ] Isi kontak di `CODE_OF_CONDUCT.md` dan `<org>` di README/compose
-- [ ] Cek merek "Jaga" di PDKI & WIPO (kelas 9, 42)
-- [ ] Pasang aset brand: README dengan wordmark, social preview, avatar org
+- [x] Isi kontak di `CODE_OF_CONDUCT.md`
+- [x] Cek merek "Jaga" di PDKI & WIPO (kelas 9, 42): aman di PDKI dan WIPO (dicek 7 Nov 2026, tidak ada "Jaga" di kelas 9/42 untuk software/CCTV)
+- [x] Pasang aset brand: README dengan wordmark, social preview repo
 
 ### Fase 1 — Fondasi recording (±2 minggu)
 
@@ -335,6 +337,7 @@ Estimasi total 7–10 minggu kerja part-time. Setiap fase menghasilkan sesuatu y
 - [ ] i18n UI (`en`, `id`)
 - [ ] Privacy mask per kamera, retensi maksimum, audit log akses rekaman
 - [ ] Homebrew tap & paket `.deb`
+- [ ] (Opsional) domain proyek untuk docs site, mis. `getjaga.dev` (masih kosong per 7 Nov 2026; `jaga.dev` sudah dipakai)
 
 ## Risiko & mitigasi
 
@@ -344,11 +347,12 @@ Estimasi total 7–10 minggu kerja part-time. Setiap fase menghasilkan sesuatu y
 | --- | --- | --- |
 | Stream RTSP kamera murah tidak stabil / hang tanpa error | Rekaman bolong diam-diam | Deteksi stall via progress, timeout RTSP, event `offline`, alert notifikasi |
 | Kamera H.265, browser tidak mendukung | Live view gagal | Live pakai sub-stream H.264; go2rtc fallback ke MSE; playback H.265 hanya via download |
-| Timestamp kamera melompat / NTP salah | Timeline kacau | Pakai waktu server untuk nama segmen, `-reset_timestamps 1`, simpan durasi dari ffprobe |
+| Timestamp kamera melompat / NTP salah | Timeline kacau | Waktu server saat segmen ditutup sebagai `end_ts`, `-reset_timestamps 1`, durasi dari ffprobe, nama file UTC |
+| FFmpeg tidak membuat folder tanggal baru | Rekaman semua kamera mati tiap tengah malam | Supervisor membuat folder hari ini + besok, restart jika `Failed to open segment` ([spike](spikes/segment-index.md)) |
 | Disk penuh atau HDD rusak | Kehilangan rekaman | Kuota disk, event `disk_full`, cek SMART di halaman sistem (backlog) |
 | Write amplification SQLite saat 16 kamera | Lock contention | WAL mode, satu goroutine writer dengan antrean batch insert |
 | Frame diff false positive (bayangan, hujan, IR switch) | Notifikasi spam | Mask zona, threshold per kamera, minimum durasi, cooldown notifikasi |
-| `segment_list pipe:1` tidak andal (buffering, segmen terakhir hilang saat FFmpeg di-kill) | Index segmen tidak lengkap | Spike di Fase 0; rekonsiliasi file ↔ DB saat startup dan setiap retensi |
+| `segment_list pipe:1` tidak andal (buffering, segmen terakhir hilang saat FFmpeg di-kill) | Index segmen tidak lengkap | [Spike Fase 0](spikes/segment-index.md): list andal untuk segmen yang tertutup (SIGINT, stall); segmen yang sedang ditulis saat SIGKILL hilang, sehingga rekonsiliasi file ↔ DB tetap wajib saat startup dan setiap retensi |
 
 ### Keamanan
 
@@ -420,7 +424,7 @@ Logo Jaga berupa huruf **j** monoline dengan titik berwarna amber. Titik itu dib
 
 | File | Pakai untuk |
 | --- | --- |
-| [`brand/jaga-mark.svg`](brand/jaga-mark.svg) | Avatar org GitHub, ikon app/PWA, Docker Hub |
+| [`brand/jaga-mark.svg`](brand/jaga-mark.svg) | Ikon app/PWA, avatar GHCR/Docker Hub |
 | [`brand/favicon.svg`](brand/favicon.svg) | Favicon web UI (salinan mark) |
 | [`brand/jaga-wordmark-on-dark.svg`](brand/jaga-wordmark-on-dark.svg) | Header README / UI di latar gelap |
 | [`brand/jaga-wordmark-on-light.svg`](brand/jaga-wordmark-on-light.svg) | Header README / UI di latar terang |
@@ -586,12 +590,11 @@ Logo dan nama Jaga tidak tercakup lisensi Apache-2.0 (pasal 6). Aturan pemakaian
 
 ### Checklist sebelum publikasi
 
-- [ ] Cek ketersediaan nama: org/repo GitHub, Docker Hub / GHCR, Homebrew tap, domain (misal `jaga.dev`, `getjaga.dev`), dan module path Go
-- [ ] Upload `social-preview.png` di Settings → Social preview
-- [ ] Pasang `jaga-mark.svg` sebagai avatar org
+- [x] Identitas: repo, GHCR, dan module path Go di bawah akun pribadi `ryandinulfatah12`, tanpa org (keputusan 7 Nov 2026). Domain opsional, lihat backlog
+- [x] Upload `social-preview.png` di Settings → Social preview
 - [x] Lisensi Apache-2.0 + `NOTICE`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `THIRD_PARTY_NOTICES.md` ([detail](#lisensi--kepatuhan-open-source))
-- [ ] Isi kontak penegakan di `CODE_OF_CONDUCT.md`
-- [ ] Cek merek di PDKI & WIPO (kelas 9, 42)
+- [x] Isi kontak penegakan di `CODE_OF_CONDUCT.md`
+- [x] Cek merek di PDKI & WIPO (kelas 9, 42): aman di PDKI dan WIPO (dicek 7 Nov 2026, tidak ada "Jaga" di kelas 9/42 untuk software/CCTV)
 
 ## CLI
 

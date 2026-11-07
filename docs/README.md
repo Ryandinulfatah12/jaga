@@ -15,6 +15,7 @@ Dokumentasi pengembangan **Jaga**, NVR CCTV self-host yang ringan (terinspirasi 
 - [Branding: nama, logo, palet, tipografi](07-branding.md)
 - [CLI](08-cli.md)
 - [Lisensi & kepatuhan open source](09-legal.md)
+- Hasil riset Fase 0: [spike segment list](spikes/segment-index.md), [pengukuran stream](spikes/streams.md), [observasi Shinobi](spikes/shinobi-blackbox.md)
 - [Dokumen lengkap (satu file)](jaga-full.md)
 - [Diagram arsitektur (SVG)](architecture.svg)
 - Aset brand: [`brand/`](brand/)

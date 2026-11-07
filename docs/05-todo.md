@@ -4,19 +4,19 @@ Estimasi total 7–10 minggu kerja part-time. Setiap fase menghasilkan sesuatu y
 
 ### Fase 0 — Riset & setup (±1 minggu)
 
-- [ ] Amati perilaku Shinobi CE secara black-box: jalankan, catat argumen FFmpeg (`ps -ef`) dan lifecycle monitor. **Jangan membuka source code-nya** ([aturan](09-legal.md#hubungan-dengan-shinobi))
-- [ ] Siapkan 2 kamera uji (1 mendukung ONVIF event) atau RTSP simulator (`mediamtx` + file loop)
-- [ ] Ukur bitrate & codec tiap kamera via `ffprobe`, catat main vs sub stream
-- [ ] **Spike**: mediamtx + FFmpeg `-f segment -segment_list pipe:1` + kill/stall, untuk membuktikan index segmen andal
-- [ ] Init repo Go, struktur folder, Makefile, lint (`golangci-lint`), CI build
-- [ ] CI kepatuhan: `go-licenses` dengan allowlist, license checker `web/`, cek DCO, header SPDX, `govulncheck`, Dependabot
-- [ ] Aktifkan GitHub private vulnerability reporting dan proteksi branch `main`
-- [ ] Pilih driver SQLite (`modernc.org/sqlite`) + tool migrasi
-- [ ] Amankan nama `jaga`: org/repo GitHub, GHCR, module path Go, domain (lihat [checklist branding](07-branding.md#checklist-sebelum-publikasi))
+- [x] Amati perilaku Shinobi CE secara black-box: jalankan, catat argumen FFmpeg (`ps -ef`) dan lifecycle monitor. **Jangan membuka source code-nya** ([aturan](09-legal.md#hubungan-dengan-shinobi), [hasil](spikes/shinobi-blackbox.md)); lifecycle saat kamera dicabut belum diamati
+- [x] Siapkan 2 kamera uji (1 mendukung ONVIF event) atau RTSP simulator (`mediamtx` + file loop): [`scripts/dev/rtsp-sim.sh`](../scripts/dev/rtsp-sim.sh); kamera ONVIF fisik masih dibutuhkan untuk Fase 4
+- [x] Ukur bitrate & codec tiap kamera via `ffprobe`, catat main vs sub stream ([hasil](spikes/streams.md))
+- [x] **Spike**: mediamtx + FFmpeg `-f segment -segment_list pipe:1` + kill/stall, untuk membuktikan index segmen andal ([hasil](spikes/segment-index.md))
+- [x] Init repo Go, struktur folder, Makefile, lint (`golangci-lint`), CI build
+- [x] CI kepatuhan: `go-licenses` dengan allowlist, license checker `web/`, cek DCO, header SPDX, `govulncheck`, Dependabot
+- [x] Aktifkan GitHub private vulnerability reporting dan proteksi branch `main` (ruleset: tanpa hapus/force push, wajib PR, check `Build & test`, `Lint`, `Compliance`, `DCO`)
+- [x] Pilih driver SQLite (`modernc.org/sqlite`) + tool migrasi
+- [x] Tetapkan identitas proyek: repo `github.com/ryandinulfatah12/jaga` (akun pribadi, **tanpa org**), image `ghcr.io/ryandinulfatah12/jaga`, module path Go `github.com/ryandinulfatah12/jaga`. Disclaimer di README bagian Maintainer ([checklist branding](07-branding.md#checklist-sebelum-publikasi))
 - [x] Lisensi Apache-2.0, `LICENSE`, `NOTICE`, `CONTRIBUTING.md` (DCO), `SECURITY.md`, `CODE_OF_CONDUCT.md`, `THIRD_PARTY_NOTICES.md`
-- [ ] Isi kontak di `CODE_OF_CONDUCT.md` dan `<org>` di README/compose
-- [ ] Cek merek "Jaga" di PDKI & WIPO (kelas 9, 42)
-- [ ] Pasang aset brand: README dengan wordmark, social preview, avatar org
+- [x] Isi kontak di `CODE_OF_CONDUCT.md`
+- [x] Cek merek "Jaga" di PDKI & WIPO (kelas 9, 42): aman di PDKI dan WIPO (dicek 7 Nov 2026, tidak ada "Jaga" di kelas 9/42 untuk software/CCTV)
+- [x] Pasang aset brand: README dengan wordmark, social preview repo
 
 ### Fase 1 — Fondasi recording (±2 minggu)
 
@@ -86,3 +86,4 @@ Estimasi total 7–10 minggu kerja part-time. Setiap fase menghasilkan sesuatu y
 - [ ] i18n UI (`en`, `id`)
 - [ ] Privacy mask per kamera, retensi maksimum, audit log akses rekaman
 - [ ] Homebrew tap & paket `.deb`
+- [ ] (Opsional) domain proyek untuk docs site, mis. `getjaga.dev` (masih kosong per 7 Nov 2026; `jaga.dev` sudah dipakai)

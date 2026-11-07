@@ -17,3 +17,6 @@ jaga.yml
 .DS_Store
 .idea/
 .vscode/
+
+# dev simulator & spike output (scripts/dev)
+/.sim/

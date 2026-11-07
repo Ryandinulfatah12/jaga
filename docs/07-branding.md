@@ -30,7 +30,7 @@ Logo Jaga berupa huruf **j** monoline dengan titik berwarna amber. Titik itu dib
 
 | File | Pakai untuk |
 | --- | --- |
-| [`brand/jaga-mark.svg`](brand/jaga-mark.svg) | Avatar org GitHub, ikon app/PWA, Docker Hub |
+| [`brand/jaga-mark.svg`](brand/jaga-mark.svg) | Ikon app/PWA, avatar GHCR/Docker Hub |
 | [`brand/favicon.svg`](brand/favicon.svg) | Favicon web UI (salinan mark) |
 | [`brand/jaga-wordmark-on-dark.svg`](brand/jaga-wordmark-on-dark.svg) | Header README / UI di latar gelap |
 | [`brand/jaga-wordmark-on-light.svg`](brand/jaga-wordmark-on-light.svg) | Header README / UI di latar terang |
@@ -196,9 +196,8 @@ Logo dan nama Jaga tidak tercakup lisensi Apache-2.0 (pasal 6). Aturan pemakaian
 
 ### Checklist sebelum publikasi
 
-- [ ] Cek ketersediaan nama: org/repo GitHub, Docker Hub / GHCR, Homebrew tap, domain (misal `jaga.dev`, `getjaga.dev`), dan module path Go
-- [ ] Upload `social-preview.png` di Settings → Social preview
-- [ ] Pasang `jaga-mark.svg` sebagai avatar org
+- [x] Identitas: repo, GHCR, dan module path Go di bawah akun pribadi `ryandinulfatah12`, tanpa org (keputusan 7 Nov 2026). Domain opsional, lihat backlog
+- [x] Upload `social-preview.png` di Settings → Social preview
 - [x] Lisensi Apache-2.0 + `NOTICE`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `THIRD_PARTY_NOTICES.md` ([detail](09-legal.md))
-- [ ] Isi kontak penegakan di `CODE_OF_CONDUCT.md`
-- [ ] Cek merek di PDKI & WIPO (kelas 9, 42)
+- [x] Isi kontak penegakan di `CODE_OF_CONDUCT.md`
+- [x] Cek merek di PDKI & WIPO (kelas 9, 42): aman di PDKI dan WIPO (dicek 7 Nov 2026, tidak ada "Jaga" di kelas 9/42 untuk software/CCTV)
