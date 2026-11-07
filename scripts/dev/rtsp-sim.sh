@@ -50,8 +50,11 @@ EOF
 pids=""
 cleanup() {
 	trap - EXIT INT TERM
-	# shellcheck disable=SC2086
-	kill $pids 2>/dev/null || true
+	for p in $pids; do
+		kids=$(pgrep -P "$p" || true)
+		# shellcheck disable=SC2086
+		kill "$p" $kids 2>/dev/null || true
+	done
 	wait 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
@@ -60,10 +63,15 @@ mediamtx "$dir/mediamtx.yml" &
 pids="$pids $!"
 sleep 1
 
+# Publishers restart when they exit, so a camera that was stalled on purpose
+# (kill -STOP / -CONT) comes back like a real one would.
 for cam in cam1 cam2; do
 	for stream in main sub; do
-		ffmpeg -nostdin -v error -re -stream_loop -1 -i "$dir/$cam-$stream.mkv" -c copy \
-			-f rtsp -rtsp_transport tcp "rtsp://127.0.0.1:$port/$cam/$stream" &
+		while :; do
+			ffmpeg -nostdin -v error -re -stream_loop -1 -i "$dir/$cam-$stream.mkv" -c copy \
+				-f rtsp -rtsp_transport tcp "rtsp://127.0.0.1:$port/$cam/$stream" || :
+			sleep 1
+		done &
 		pids="$pids $!"
 		echo "publishing rtsp://127.0.0.1:$port/$cam/$stream"
 	done

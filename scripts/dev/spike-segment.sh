@@ -27,12 +27,16 @@ record() { # url, output pattern, list file, log file
 	rec=$!
 }
 
-check() { # file: print duration and packet count, or the ffprobe error
+check() { # file: print packet count and duration, flag files ffprobe warns about
 	if r=$(ffprobe -v error -select_streams v -count_packets \
-		-show_entries format=duration:stream=nb_read_packets -of csv=p=0 "$1" 2>&1); then
-		echo "    ok   $(echo "$r" | tr '\n' ' ') $1"
+		-show_entries format=duration:stream=nb_read_packets -of csv=p=0 "$1" 2>"$out/probe.err"); then
+		if [ -s "$out/probe.err" ]; then
+			echo "    warn $(echo "$r" | tr '\n' ' ') $1: $(tail -n 1 "$out/probe.err")"
+		else
+			echo "    ok   $(echo "$r" | tr '\n' ' ') $1"
+		fi
 	else
-		echo "    BAD  $1: $(echo "$r" | sed -n 1p)"
+		echo "    BAD  $1: $(sed -n 1p "$out/probe.err")"
 	fi
 }
 
@@ -118,3 +122,25 @@ kill -CONT "$pub"
 kill -KILL "$rec" 2>/dev/null
 report "$out/h" "$out/h.csv"
 sed 's/^/  log: /' "$out/h.log"
+
+echo "== I: when does a list line arrive, compared to the file name and duration?"
+# The publisher stalled in H needs a moment to come back.
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+	ffprobe -v error -rtsp_transport tcp -show_entries stream=index -of csv=p=0 "$base/cam2/sub" >/dev/null 2>&1 && break
+	sleep 1
+done
+mkdir -p "$out/i"
+mkfifo "$out/i.fifo"
+perl -MTime::HiRes=time -ne '$| = 1; printf "%.2f,%s", time, $_' <"$out/i.fifo" >"$out/i.csv" &
+stamp=$!
+echo "  recorder started at $(perl -MTime::HiRes=time -e 'printf "%.2f", time') ($(date +%H%M%S))"
+record "$base/cam2/sub" "$out/i/%H%M%S.mp4" "$out/i.fifo" "$out/i.log"
+sleep 14
+kill -INT "$rec"
+wait_exit "$rec" 10
+wait "$stamp"
+echo "  arrival (epoch), file, start, end, ffprobe duration, arrival - duration (local time):"
+while IFS=, read -r at f s e; do
+	d=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$out/i/$f")
+	echo "    $at $f $s $e $d $(perl -e 'my @t = localtime($ARGV[0] - $ARGV[1]); printf "%02d%02d%02d", @t[2, 1, 0]' "$at" "$d")"
+done <"$out/i.csv"
