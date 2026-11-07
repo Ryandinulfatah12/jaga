@@ -1,0 +1,14 @@
+# Contoh konfigurasi Jaga. Salin ke jaga.yml (atau /etc/jaga/jaga.yml).
+# Setiap key bisa di-override lewat env JAGA_<KEY>, misalnya JAGA_LISTEN=:9090
+# atau JAGA_STORAGE_DISK_QUOTA_PERCENT=85. Lihat docs/08-cli.md.
+
+listen: ":8080"
+data_dir: /data
+ffmpeg_path: ffmpeg
+go2rtc:
+  mode: embedded      # embedded = spawn binary bawaan | external
+  api: 127.0.0.1:1984
+storage:
+  disk_quota_percent: 90
+  default_retention_days: 7
+# secret_key tidak ditulis di file: set env JAGA_SECRET_KEY (enkripsi URL kamera).

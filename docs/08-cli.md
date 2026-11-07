@@ -59,6 +59,7 @@ $ jaga doctor
 
 ### Implementasi
 
-- Parsing perintah: `spf13/cobra` atau `urfave/cli/v3`. Keduanya hanya menambah ±1–2 MB ke binary.
+- Parsing perintah: package `flag` dari standard library, satu `FlagSet` per perintah sehingga flag global boleh ditaruh sebelum atau sesudah perintah. Ganti ke `spf13/cobra` bila perintah mulai bertingkat (`jaga user add`, `jaga camera list`) atau butuh shell completion.
 - Output: `charmbracelet/lipgloss` untuk warna, `log/slog` dengan handler teks berwarna untuk TTY dan handler JSON untuk non-TTY.
-- Lokasi kode: `cmd/jaga/` untuk wiring cobra, `internal/cli/` untuk tiap subcommand, dan `internal/ui/term/` untuk palet dan simbol.
+- Lokasi kode: `cmd/jaga/` hanya menangkap sinyal dan memanggil `cli.Run`, `internal/cli/` untuk tiap subcommand, `internal/config/` untuk `jaga.yml` + env, dan `internal/ui/term/` untuk palet dan simbol.
+- Belum ada (menyusul): `--no-color` dan banner berwarna (bersama `internal/ui/term`), versi go2rtc di `jaga version` (Fase 2).

@@ -10,6 +10,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"io/fs"
 	"net/url"
@@ -50,6 +51,9 @@ func Open(ctx context.Context, path string) (*sql.DB, error) {
 // Migrate applies every pending goose migration found at the root of migrations.
 func Migrate(ctx context.Context, db *sql.DB, migrations fs.FS) error {
 	p, err := goose.NewProvider(goose.DialectSQLite3, db, migrations)
+	if errors.Is(err, goose.ErrNoMigrations) {
+		return nil
+	}
 	if err != nil {
 		return fmt.Errorf("migrate: %w", err)
 	}

@@ -4,7 +4,7 @@ Satu repo Go, frontend di-build lalu di-embed (`embed.FS`) sehingga hasil akhirn
 
 ```
 jaga/
-  cmd/jaga/main.go           # entrypoint: subcommand cobra, wiring, graceful shutdown
+  cmd/jaga/main.go           # entrypoint: tangkap SIGINT/SIGTERM, panggil cli.Run
   internal/
     cli/                     # start, init, doctor, probe, user, migrate, backup
     config/                  # load jaga.yml + override env JAGA_*

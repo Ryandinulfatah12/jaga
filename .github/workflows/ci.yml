@@ -24,7 +24,7 @@ jobs:
       - run: make vet
       - run: make test
       - run: make build
-      - run: ./bin/jaga
+      - run: ./bin/jaga version
 
   lint:
     name: Lint
