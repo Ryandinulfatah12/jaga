@@ -14,7 +14,8 @@ Estimasi total 7–10 minggu kerja part-time. Setiap fase menghasilkan sesuatu y
 - [ ] Pilih driver SQLite (`modernc.org/sqlite`) + tool migrasi
 - [ ] Amankan nama `jaga`: org/repo GitHub, GHCR, module path Go, domain (lihat [checklist branding](07-branding.md#checklist-sebelum-publikasi))
 - [x] Lisensi Apache-2.0, `LICENSE`, `NOTICE`, `CONTRIBUTING.md` (DCO), `SECURITY.md`, `CODE_OF_CONDUCT.md`, `THIRD_PARTY_NOTICES.md`
-- [ ] Isi kontak di `CODE_OF_CONDUCT.md` dan `<org>` di README/compose
+- [ ] Isi kontak di `CODE_OF_CONDUCT.md`
+- [ ] Pindah ke org (mis. `jaga-nvr`) **sebelum** menulis kode Go, karena module path ikut berubah
 - [ ] Cek merek "Jaga" di PDKI & WIPO (kelas 9, 42)
 - [ ] Pasang aset brand: README dengan wordmark, social preview, avatar org
 

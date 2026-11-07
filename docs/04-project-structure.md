@@ -56,7 +56,7 @@ secret_key: ${JAGA_SECRET_KEY}   # enkripsi URL kamera
 ```yaml
 services:
   jaga:
-    image: ghcr.io/<org>/jaga:latest
+    image: ghcr.io/ryandinulfatah12/jaga:latest
     network_mode: host
     restart: unless-stopped
     volumes:

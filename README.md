@@ -32,7 +32,7 @@ jaga start    # open http://localhost:8080
 # docker-compose.yml
 services:
   jaga:
-    image: ghcr.io/<org>/jaga:latest
+    image: ghcr.io/ryandinulfatah12/jaga:latest
     network_mode: host
     restart: unless-stopped
     volumes:
