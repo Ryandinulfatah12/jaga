@@ -6,6 +6,7 @@ package cli
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"flag"
 	"fmt"
@@ -20,6 +21,7 @@ import (
 	"github.com/ryandinulfatah12/jaga/internal/camera"
 	"github.com/ryandinulfatah12/jaga/internal/config"
 	"github.com/ryandinulfatah12/jaga/internal/db"
+	"github.com/ryandinulfatah12/jaga/internal/supervisor"
 	"github.com/ryandinulfatah12/jaga/internal/version"
 	"github.com/ryandinulfatah12/jaga/migrations"
 )
@@ -159,15 +161,15 @@ func (e *env) loadConfig() (config.Config, int) {
 }
 
 // openDB creates data_dir if needed, opens jaga.db and applies migrations.
-func (e *env) openDB(cfg config.Config) (closeDB func(), code int) {
+func (e *env) openDB(cfg config.Config) (conn *sql.DB, closeDB func(), code int) {
 	if err := os.MkdirAll(cfg.DataDir, 0o750); err != nil {
 		e.log.Error("data_dir", "err", err)
-		return nil, exitError
+		return nil, nil, exitError
 	}
 	conn, err := db.Open(e.ctx, filepath.Join(cfg.DataDir, "jaga.db"))
 	if err != nil {
 		e.log.Error("database", "err", err)
-		return nil, exitError
+		return nil, nil, exitError
 	}
 	closeDB = func() {
 		if err := conn.Close(); err != nil {
@@ -177,9 +179,9 @@ func (e *env) openDB(cfg config.Config) (closeDB func(), code int) {
 	if err := db.Migrate(e.ctx, conn, migrations.FS); err != nil {
 		closeDB()
 		e.log.Error("migrate", "err", err)
-		return nil, exitError
+		return nil, nil, exitError
 	}
-	return closeDB, exitOK
+	return conn, closeDB, exitOK
 }
 
 func (e *env) migrate() int {
@@ -187,7 +189,7 @@ func (e *env) migrate() int {
 	if code != exitOK {
 		return code
 	}
-	closeDB, code := e.openDB(cfg)
+	_, closeDB, code := e.openDB(cfg)
 	if code != exitOK {
 		return code
 	}
@@ -197,8 +199,8 @@ func (e *env) migrate() int {
 }
 
 // start runs until ctx is cancelled (SIGINT/SIGTERM in main).
-// ponytail: only config, deps and DB for now; API, supervisor and retention
-// get wired here as their F1/F2 tasks land.
+// ponytail: config, DB and the recording supervisor for now; API and
+// retention get wired here as their F1/F2 tasks land.
 func (e *env) start() int {
 	cfg, code := e.loadConfig()
 	if code != exitOK {
@@ -206,22 +208,38 @@ func (e *env) start() int {
 	}
 	// Camera URLs are encrypted with secret_key, so start refuses to run
 	// without one (docs/03-design.md, Keamanan).
-	if _, err := camera.NewSealer(cfg.SecretKey); err != nil {
+	seal, err := camera.NewSealer(cfg.SecretKey)
+	if err != nil {
 		e.log.Error("set JAGA_SECRET_KEY (e.g. openssl rand -base64 32)", "err", err)
 		return exitConfig
 	}
-	if _, err := exec.LookPath(cfg.FFmpegPath); err != nil {
+	ffmpeg, err := exec.LookPath(cfg.FFmpegPath)
+	if err != nil {
 		e.log.Error("ffmpeg not found, install it or set ffmpeg_path", "ffmpeg_path", cfg.FFmpegPath)
 		return exitDeps
 	}
-	closeDB, code := e.openDB(cfg)
+	conn, closeDB, code := e.openDB(cfg)
 	if code != exitOK {
 		return code
 	}
 	defer closeDB()
 
-	e.log.Info("ready", "version", version.Version, "data_dir", cfg.DataDir, "listen", cfg.Listen)
-	<-e.ctx.Done()
+	all, err := camera.NewStore(conn, seal).List(e.ctx)
+	if err != nil {
+		e.log.Error("load cameras", "err", err)
+		return exitError
+	}
+	var rec []camera.Camera
+	for _, c := range all {
+		if c.Enabled && c.RecordMode == camera.RecordContinuous {
+			rec = append(rec, c)
+		}
+	}
+	sup := &supervisor.Supervisor{FFmpegPath: ffmpeg, DataDir: cfg.DataDir, DB: conn, Log: e.log}
+
+	e.log.Info("ready", "version", version.Version, "data_dir", cfg.DataDir, "listen", cfg.Listen,
+		"cameras", len(all), "recording", len(rec))
+	sup.Run(e.ctx, rec) // returns after ctx is cancelled and every recorder has stopped
 	e.log.Info("shutting down")
 	return exitOK
 }
