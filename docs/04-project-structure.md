@@ -23,6 +23,8 @@ jaga/
   web/                       # frontend Svelte + Vite (tokens dari docs/brand/tokens.css)
   migrations/
   scripts/fetch-ffmpeg.sh    # unduh FFmpeg LGPL ter-pin + source tarball untuk rilis
+  scripts/dev/               # simulator RTSP, probe, spike (khusus development)
+  docs/spikes/               # hasil spike & pengukuran
   LICENSE  NOTICE  THIRD_PARTY_NOTICES.md  SECURITY.md  CONTRIBUTING.md  CODE_OF_CONDUCT.md
   Dockerfile
   docker-compose.yml
