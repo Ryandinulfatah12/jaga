@@ -75,6 +75,11 @@ func TestExitCodes(t *testing.T) {
 		{"missing secret", nil, []string{"start"}, exitConfig},
 		{"short secret", map[string]string{"JAGA_SECRET_KEY": "short"}, []string{"start"}, exitConfig},
 		{"help", nil, []string{"--help"}, exitOK},
+		{"probe without url", nil, []string{"probe"}, exitError},
+		{"probe bad url", nil, []string{"probe", "file:///etc/passwd"}, exitError},
+		{"probe two urls", nil, []string{"probe", "rtsp://a/s", "rtsp://b/s"}, exitError},
+		{"probe bad seconds", nil, []string{"probe", "rtsp://a/s", "--seconds", "0"}, exitError},
+		{"probe missing ffmpeg", map[string]string{"JAGA_FFMPEG_PATH": "definitely-not-ffmpeg"}, []string{"probe", "rtsp://a/s"}, exitDeps},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -136,4 +141,11 @@ func (w *readyWriter) String() string {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	return w.buf.String()
+}
+
+func TestProbeHidesPassword(t *testing.T) {
+	code, out, stderr := run(t, t.Context(), nil, "probe", "rtsp://admin:hunter2@cam:99999/s")
+	if code != exitError || strings.Contains(out+stderr, "hunter2") {
+		t.Errorf("exit %d, output leaks password or wrong code:\n%s%s", code, out, stderr)
+	}
 }

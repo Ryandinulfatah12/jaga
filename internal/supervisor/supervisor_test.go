@@ -28,12 +28,52 @@ func TestMain(m *testing.M) {
 	case "record":
 		fakeRecord()
 	case "fail":
+		countRun()
 		fakeFail()
+	case "stall":
+		countRun()
+		fakeStall()
+	case "flaky": // fails twice, then records
+		if countRun() <= 2 {
+			fakeFail()
+		}
+		fakeRecord()
+	case "exit0": // RTSP -timeout: FFmpeg exits 0 after an error line
+		countRun()
+		fmt.Fprintln(os.Stderr, "[in#0/rtsp @ 0x1] Failed reading RTSP data: End of file")
+		os.Exit(0)
+	case "deaf": // ignores SIGINT, like a hung FFmpeg
+		signal.Ignore(os.Interrupt)
+		progress(1)
+		time.Sleep(time.Minute)
+	case "flaky3": // fails offlineAfter times, then records
+		if countRun() <= offlineAfter {
+			fakeFail()
+		}
+		fakeRecord()
 	}
 }
 
-// fakeRecord writes two segments, waits for SIGINT, then closes a third one
-// like FFmpeg does on a clean stop.
+// progress writes one FFmpeg -progress block to fd 3.
+func progress(frame int) {
+	f := os.NewFile(3, "progress")
+	_, _ = fmt.Fprintf(f, "frame=%d\nout_time_us=%d\nprogress=continue\n", frame, frame*40000)
+}
+
+// countRun appends to $JAGA_FAKE_COUNT and returns how many runs it holds.
+func countRun() int {
+	path := os.Getenv("JAGA_FAKE_COUNT")
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600) //nolint:gosec // test fake, temp file set by the test
+	if err == nil {
+		_, _ = f.WriteString("run\n")
+		_ = f.Close()
+	}
+	b, _ := os.ReadFile(path) //nolint:gosec // test fake, temp file set by the test
+	return strings.Count(string(b), "run")
+}
+
+// fakeRecord reports progress, writes two segments, waits for SIGINT, then
+// closes a third one like FFmpeg does on a clean stop.
 func fakeRecord() {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt)
@@ -48,23 +88,44 @@ func fakeRecord() {
 		}
 		fmt.Printf("%s,%d.000000,%d.000000\n", name, i*4, i*4+4)
 	}
+	frame := 1
+	progress(frame)
 	segment(0)
 	segment(1)
-	<-stop
-	segment(2)
-	os.Exit(255) // FFmpeg's exit code after SIGINT
+	t := time.NewTicker(50 * time.Millisecond)
+	for {
+		select {
+		case <-t.C:
+			frame += 2
+			progress(frame)
+		case <-stop:
+			segment(2)
+			os.Exit(255) // FFmpeg's exit code after SIGINT
+		}
+	}
 }
 
-// fakeFail counts its runs and exits like a refused camera connection.
+// fakeFail exits like a refused camera connection.
 func fakeFail() {
-	f, err := os.OpenFile(os.Getenv("JAGA_FAKE_COUNT"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600) //nolint:gosec // test fake, temp file set by the test
-	if err == nil {
-		_, _ = f.WriteString("run\n")
-		_ = f.Close()
-	}
 	fmt.Fprintln(os.Stderr, "[tcp @ 0x1] Connection to tcp://cam:554 failed: Connection refused")
 	fmt.Fprintln(os.Stderr, "rtsp://admin:hunter2@cam:554/stream1: Connection refused")
 	os.Exit(1)
+}
+
+// fakeStall connects, then keeps reporting the same frame count, like a
+// camera that froze while the connection stays open.
+func fakeStall() {
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt)
+	t := time.NewTicker(50 * time.Millisecond)
+	for {
+		select {
+		case <-t.C:
+			progress(10)
+		case <-stop:
+			os.Exit(255)
+		}
+	}
 }
 
 type logBuf struct {
@@ -116,8 +177,11 @@ func setup(t *testing.T, mode string) (*Supervisor, camera.Camera, *logBuf) {
 		DB:           conn,
 		Log:          slog.New(slog.NewTextHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug})),
 		Probe:        func(context.Context, string) (time.Duration, error) { return 4 * time.Second, nil },
-		RestartDelay: 20 * time.Millisecond,
+		BackoffMin:   20 * time.Millisecond,
+		BackoffMax:   80 * time.Millisecond,
+		StallTimeout: 2 * time.Second,
 	}
+	t.Setenv("JAGA_FAKE_COUNT", filepath.Join(t.TempDir(), "runs"))
 	return s, c, logs
 }
 
@@ -191,28 +255,218 @@ func TestIndexesSegmentsAndStopsCleanly(t *testing.T) {
 	}
 }
 
-func TestRestartsAndMasksErrors(t *testing.T) {
-	s, c, logs := setup(t, "fail")
-	counter := filepath.Join(t.TempDir(), "runs")
-	t.Setenv("JAGA_FAKE_COUNT", counter)
+func runs(t *testing.T) int {
+	t.Helper()
+	b, _ := os.ReadFile(os.Getenv("JAGA_FAKE_COUNT")) //nolint:gosec // temp file set by the test
+	return strings.Count(string(b), "run")
+}
+
+func events(t *testing.T, s *Supervisor) (open, closed int) {
+	t.Helper()
+	if err := s.DB.QueryRowContext(context.Background(), `
+		SELECT count(*) FILTER (WHERE end_ts IS NULL), count(*) FILTER (WHERE end_ts IS NOT NULL)
+		FROM events WHERE type = 'offline'`).Scan(&open, &closed); err != nil {
+		t.Fatal(err)
+	}
+	return open, closed
+}
+
+func start(t *testing.T, s *Supervisor, c camera.Camera) (stop func()) {
+	t.Helper()
 	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
 	done := make(chan struct{})
 	go func() { s.Run(ctx, []camera.Camera{c}); close(done) }()
+	return func() {
+		cancel()
+		select {
+		case <-done:
+		case <-time.After(20 * time.Second):
+			t.Fatal("Run did not return after cancel")
+		}
+	}
+}
 
-	waitFor(t, "three runs", func() bool {
-		b, _ := os.ReadFile(counter) //nolint:gosec // temp file created by the test
-		return strings.Count(string(b), "run") >= 3
-	})
-	cancel()
-	<-done
+func TestRestartsWithBackoffAndOffline(t *testing.T) {
+	s, c, logs := setup(t, "fail")
+	stop := start(t, s, c)
+	waitFor(t, "five runs", func() bool { return runs(t) >= 5 })
+	stop()
 
 	l := logs.String()
-	if !strings.Contains(l, "recorder exited, restarting") || !strings.Contains(l, "Connection refused") {
+	if !strings.Contains(l, "recorder failed, restarting") || !strings.Contains(l, "Connection refused") {
 		t.Errorf("restart reason not logged:\n%s", l)
 	}
 	if strings.Contains(l, "hunter2") {
 		t.Errorf("camera password leaked into the log:\n%s", l)
+	}
+	for _, want := range []string{"in=20ms", "in=40ms", "in=80ms"} {
+		if !strings.Contains(l, want) {
+			t.Errorf("backoff step %s missing:\n%s", want, l)
+		}
+	}
+	if strings.Contains(l, "in=160ms") {
+		t.Errorf("backoff exceeded BackoffMax:\n%s", l)
+	}
+	if open, _ := events(t, s); open != 1 {
+		t.Errorf("open offline events = %d, want 1", open)
+	}
+}
+
+func TestExitZeroIsAFailure(t *testing.T) {
+	s, c, logs := setup(t, "exit0")
+	stop := start(t, s, c)
+	waitFor(t, "a restart after exit 0", func() bool { return runs(t) >= 2 })
+	stop()
+	l := logs.String()
+	if !strings.Contains(l, `err="[in#0/rtsp @ 0x1] Failed reading RTSP data: End of file"`) || strings.Contains(l, "%!") {
+		t.Errorf("exit 0 reason not logged cleanly:\n%s", l)
+	}
+}
+
+func TestStallIsKilled(t *testing.T) {
+	s, c, logs := setup(t, "stall")
+	s.StallTimeout = 300 * time.Millisecond
+	stop := start(t, s, c)
+	waitFor(t, "a restart after the stall", func() bool { return runs(t) >= 2 })
+	stop()
+	if !strings.Contains(logs.String(), "stalled: no new frames") {
+		t.Errorf("stall not reported:\n%s", logs)
+	}
+}
+
+func TestOnlineClosesOffline(t *testing.T) {
+	s, c, logs := setup(t, "flaky")
+	// A stale open event from an earlier run is closed at start.
+	if _, err := s.DB.ExecContext(t.Context(), `INSERT INTO events (camera_id, type, start_ts) VALUES (?, 'offline', 0)`, c.ID); err != nil {
+		t.Fatal(err)
+	}
+	stop := start(t, s, c)
+	waitFor(t, "recording after two failures", func() bool { return count(t, s) >= 2 })
+	stop()
+	// flaky fails twice, below offlineAfter, so only the stale event exists.
+	if open, closed := events(t, s); open != 0 || closed != 1 {
+		t.Errorf("offline events open=%d closed=%d, want 0 and 1\n%s", open, closed, logs)
+	}
+}
+
+func TestOfflineThenOnline(t *testing.T) {
+	s, c, logs := setup(t, "flaky3")
+	stop := start(t, s, c)
+	waitFor(t, "recording after three failures", func() bool { return count(t, s) >= 2 })
+	stop()
+	if open, closed := events(t, s); open != 0 || closed != 1 {
+		t.Errorf("offline events open=%d closed=%d, want 0 and 1\n%s", open, closed, logs)
+	}
+	if !strings.Contains(logs.String(), "camera offline") || !strings.Contains(logs.String(), "camera online") {
+		t.Errorf("offline/online not logged:\n%s", logs)
+	}
+}
+
+func TestShutdownStopsAllCameras(t *testing.T) {
+	s, first, logs := setup(t, "record")
+	cams := []camera.Camera{first}
+	store := camera.NewStore(s.DB, mustSealer(t))
+	for _, name := range []string{"Garasi", "Belakang"} {
+		c, err := store.Create(t.Context(), camera.New(name, "rtsp://cam/"+name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		cams = append(cams, c)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan struct{})
+	go func() { s.Run(ctx, cams); close(done) }()
+	waitFor(t, "two segments per camera", func() bool { return count(t, s) == 2*len(cams) })
+
+	began := time.Now()
+	cancel()
+	<-done
+	// Recorders stop in parallel, well within one StopTimeout.
+	if took := time.Since(began); took > 3*time.Second {
+		t.Errorf("shutdown took %v", took)
+	}
+	var perCamera int
+	if err := s.DB.QueryRowContext(context.Background(),
+		`SELECT min(n) FROM (SELECT count(*) AS n FROM segments GROUP BY camera_id)`).Scan(&perCamera); err != nil {
+		t.Fatal(err)
+	}
+	if perCamera != 3 || count(t, s) != 3*len(cams) {
+		t.Errorf("want 3 segments per camera (last one closed on SIGINT), got min %d total %d\n%s", perCamera, count(t, s), logs)
+	}
+	if !strings.Contains(logs.String(), "recorders stopped") {
+		t.Errorf("no shutdown summary:\n%s", logs)
+	}
+}
+
+func TestShutdownKillsHungRecorder(t *testing.T) {
+	s, c, logs := setup(t, "deaf")
+	s.StopTimeout = 300 * time.Millisecond
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan struct{})
+	go func() { s.Run(ctx, []camera.Camera{c}); close(done) }()
+	waitFor(t, "recording", func() bool { return strings.Contains(logs.String(), "msg=recording") })
+
+	began := time.Now()
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("a recorder ignoring SIGINT blocked shutdown")
+	}
+	if took := time.Since(began); took < 300*time.Millisecond || took > 5*time.Second {
+		t.Errorf("shutdown took %v, want about StopTimeout", took)
+	}
+}
+
+func TestShutdownDuringBackoff(t *testing.T) {
+	s, c, _ := setup(t, "fail")
+	s.BackoffMin, s.BackoffMax = time.Minute, time.Minute
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan struct{})
+	go func() { s.Run(ctx, []camera.Camera{c}); close(done) }()
+	waitFor(t, "first failure", func() bool { return runs(t) >= 1 })
+	time.Sleep(50 * time.Millisecond)
+	began := time.Now()
+	cancel()
+	<-done
+	if took := time.Since(began); took > time.Second {
+		t.Errorf("stop during a 1 min backoff took %v", took)
+	}
+}
+
+func mustSealer(t *testing.T) *camera.Sealer {
+	t.Helper()
+	s, err := camera.NewSealer("0123456789abcdef0123456789abcdef")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
+func TestBackoff(t *testing.T) {
+	s := &Supervisor{}
+	want := []time.Duration{2, 4, 8, 16, 32, 60, 60}
+	for i, w := range want {
+		if got := s.backoff(i + 1); got != w*time.Second {
+			t.Errorf("backoff(%d) = %v, want %v", i+1, got, w*time.Second)
+		}
+	}
+}
+
+func TestProgressAdvances(t *testing.T) {
+	in := strings.Join([]string{
+		"frame=0", "out_time_us=N/A", "progress=continue", // connecting: no advance
+		"frame=25", "out_time_us=1000000", "progress=continue", // advance
+		"frame=25", "out_time_us=1000000", "progress=continue", // frozen
+		"frame=25", "out_time_us=2000000", "progress=continue", // time moved: advance
+		"frame=50", "out_time_us=3000000", "progress=end", // advance
+	}, "\n")
+	n := 0
+	for range progressAdvances(strings.NewReader(in)) {
+		n++
+	}
+	if n != 3 {
+		t.Errorf("advances = %d, want 3", n)
 	}
 }
 
@@ -236,12 +490,6 @@ func TestHelpers(t *testing.T) {
 	}
 	if d := csvDuration([]string{"a.mp4", "x"}); d != 0 {
 		t.Errorf("csvDuration short = %v", d)
-	}
-	if got := ffprobePath("/usr/bin/ffmpeg"); got != "/usr/bin/ffprobe" {
-		t.Errorf("ffprobePath = %q", got)
-	}
-	if got := ffprobePath("ffmpeg"); got != "ffprobe" {
-		t.Errorf("ffprobePath bare = %q", got)
 	}
 	if got := maskCredentials("rtsp://admin:hunter2@cam/s: 401 and rtsps://u@x/y"); got != "rtsp://***@cam/s: 401 and rtsps://***@x/y" {
 		t.Errorf("maskCredentials = %q", got)
