@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ryandinulfatah12/jaga/internal/camera"
 	"github.com/ryandinulfatah12/jaga/internal/config"
 	"github.com/ryandinulfatah12/jaga/internal/db"
 	"github.com/ryandinulfatah12/jaga/internal/version"
@@ -202,6 +203,12 @@ func (e *env) start() int {
 	cfg, code := e.loadConfig()
 	if code != exitOK {
 		return code
+	}
+	// Camera URLs are encrypted with secret_key, so start refuses to run
+	// without one (docs/03-design.md, Keamanan).
+	if _, err := camera.NewSealer(cfg.SecretKey); err != nil {
+		e.log.Error("set JAGA_SECRET_KEY (e.g. openssl rand -base64 32)", "err", err)
+		return exitConfig
 	}
 	if _, err := exec.LookPath(cfg.FFmpegPath); err != nil {
 		e.log.Error("ffmpeg not found, install it or set ffmpeg_path", "ffmpeg_path", cfg.FFmpegPath)
