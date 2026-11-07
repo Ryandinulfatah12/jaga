@@ -51,6 +51,10 @@ Do not expose Jaga directly to the internet. Use a VPN or a reverse proxy with H
 
 Development docs (Bahasa Indonesia) live in [`docs/`](docs/README.md): architecture, design, CLI, branding.
 
+## Maintainer
+
+Jaga is an open source project maintained from the personal GitHub account of [@Ryandinulfatah12](https://github.com/Ryandinulfatah12), not by a company or organization. Images are published under that account (`ghcr.io/ryandinulfatah12/jaga`) and the Go module path is `github.com/ryandinulfatah12/jaga`. There is no plan to move to a GitHub organization; if that ever changes, it will be announced in the release notes with a migration path.
+
 ## Credits
 
 Jaga runs [FFmpeg](https://ffmpeg.org) (LGPL) and [go2rtc](https://github.com/AlexxIT/go2rtc) (MIT) as separate processes. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

@@ -263,12 +263,11 @@ Estimasi total 7–10 minggu kerja part-time. Setiap fase menghasilkan sesuatu y
 - [x] CI kepatuhan: `go-licenses` dengan allowlist, license checker `web/`, cek DCO, header SPDX, `govulncheck`, Dependabot
 - [ ] Aktifkan GitHub private vulnerability reporting dan proteksi branch `main`
 - [x] Pilih driver SQLite (`modernc.org/sqlite`) + tool migrasi
-- [ ] Amankan nama `jaga`: org/repo GitHub, GHCR, module path Go, domain (lihat [checklist branding](#checklist-sebelum-publikasi))
+- [x] Tetapkan identitas proyek: repo `github.com/ryandinulfatah12/jaga` (akun pribadi, **tanpa org**), image `ghcr.io/ryandinulfatah12/jaga`, module path Go `github.com/ryandinulfatah12/jaga`. Disclaimer di README bagian Maintainer ([checklist branding](#checklist-sebelum-publikasi))
 - [x] Lisensi Apache-2.0, `LICENSE`, `NOTICE`, `CONTRIBUTING.md` (DCO), `SECURITY.md`, `CODE_OF_CONDUCT.md`, `THIRD_PARTY_NOTICES.md`
 - [x] Isi kontak di `CODE_OF_CONDUCT.md`
-- [ ] Pindah ke org (mis. `jaga-nvr`) **sebelum** menulis kode Go, karena module path ikut berubah
 - [ ] Cek merek "Jaga" di PDKI & WIPO (kelas 9, 42)
-- [ ] Pasang aset brand: README dengan wordmark, social preview, avatar org
+- [ ] Pasang aset brand: README dengan wordmark (sudah), upload social preview di Settings repo
 
 ### Fase 1 — Fondasi recording (±2 minggu)
 
@@ -338,6 +337,7 @@ Estimasi total 7–10 minggu kerja part-time. Setiap fase menghasilkan sesuatu y
 - [ ] i18n UI (`en`, `id`)
 - [ ] Privacy mask per kamera, retensi maksimum, audit log akses rekaman
 - [ ] Homebrew tap & paket `.deb`
+- [ ] (Opsional) domain proyek untuk docs site, mis. `getjaga.dev` (masih kosong per 7 Nov 2026; `jaga.dev` sudah dipakai)
 
 ## Risiko & mitigasi
 
@@ -424,7 +424,7 @@ Logo Jaga berupa huruf **j** monoline dengan titik berwarna amber. Titik itu dib
 
 | File | Pakai untuk |
 | --- | --- |
-| [`brand/jaga-mark.svg`](brand/jaga-mark.svg) | Avatar org GitHub, ikon app/PWA, Docker Hub |
+| [`brand/jaga-mark.svg`](brand/jaga-mark.svg) | Ikon app/PWA, avatar GHCR/Docker Hub |
 | [`brand/favicon.svg`](brand/favicon.svg) | Favicon web UI (salinan mark) |
 | [`brand/jaga-wordmark-on-dark.svg`](brand/jaga-wordmark-on-dark.svg) | Header README / UI di latar gelap |
 | [`brand/jaga-wordmark-on-light.svg`](brand/jaga-wordmark-on-light.svg) | Header README / UI di latar terang |
@@ -590,11 +590,10 @@ Logo dan nama Jaga tidak tercakup lisensi Apache-2.0 (pasal 6). Aturan pemakaian
 
 ### Checklist sebelum publikasi
 
-- [ ] Cek ketersediaan nama: org/repo GitHub, Docker Hub / GHCR, Homebrew tap, domain (misal `jaga.dev`, `getjaga.dev`), dan module path Go
+- [x] Identitas: repo, GHCR, dan module path Go di bawah akun pribadi `ryandinulfatah12`, tanpa org (keputusan 7 Nov 2026). Domain opsional, lihat backlog
 - [ ] Upload `social-preview.png` di Settings → Social preview
-- [ ] Pasang `jaga-mark.svg` sebagai avatar org
 - [x] Lisensi Apache-2.0 + `NOTICE`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `THIRD_PARTY_NOTICES.md` ([detail](#lisensi--kepatuhan-open-source))
-- [ ] Isi kontak penegakan di `CODE_OF_CONDUCT.md`
+- [x] Isi kontak penegakan di `CODE_OF_CONDUCT.md`
 - [ ] Cek merek di PDKI & WIPO (kelas 9, 42)
 
 ## CLI
