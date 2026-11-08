@@ -158,7 +158,8 @@ Argumen dibangun sebagai slice oleh `internal/recorder` (`recorder.Build`) dan d
 
 | Method | Path | Fungsi |
 | --- | --- | --- |
-| POST | `/auth/login`, `/auth/logout` | sesi cookie |
+| POST | `/auth/login`, `/auth/logout` | sesi cookie (login dibatasi 5×/menit/IP) |
+| GET | `/auth/me` | user yang sedang login |
 | GET / POST | `/cameras` | list & tambah kamera |
 | GET / PATCH / DELETE | `/cameras/{id}` | detail, ubah, hapus |
 | POST | `/cameras/{id}/test` | probe RTSP via ffprobe |
@@ -173,6 +174,8 @@ Argumen dibangun sebagai slice oleh `internal/recorder` (`recorder.Build`) dan d
 | GET | `/ws` | WebSocket push status kamera & event realtime |
 | ANY | `/live/*` | reverse proxy ke go2rtc (WebRTC/MSE), dicek sesi |
 
+Sudah ada: `/auth/*`, `/cameras` (GET/POST), `/cameras/{id}` (GET/PATCH/DELETE), `/cameras/{id}/test`. Role `viewer` hanya boleh GET; tulis dan test kamera khusus `admin`. URL kamera di response selalu dimasking (`rtsp://***@host/...`). Error berbentuk `{"error": "..."}`.
+
 ### Keamanan
 
 - Semua endpoint, termasuk proxy live, wajib sesi valid.
@@ -184,7 +187,10 @@ Argumen dibangun sebagai slice oleh `internal/recorder` (`recorder.Build`) dan d
   - Config go2rtc ditulis lewat YAML marshaller, sehingga URL tidak pernah bisa menjadi source `exec:`/`ffmpeg:`.
 - Kredensial kamera tidak pernah dikirim ke frontend. API mengembalikan URL yang sudah dimasking, dan logger menyamarkan `user:pass@`.
 - **File diakses lewat ID, bukan path.** `/segments/{id}/file` mengambil path dari DB lalu memastikan hasil `filepath.Clean` berada di bawah `data_dir`. Daftar concat untuk export klip dibangun dari DB dengan cara yang sama.
-- Rate limit login (5 percobaan per menit per IP), CSRF token untuk request yang mengubah data, dan cookie `HttpOnly; SameSite=Lax`, ditambah `Secure` bila memakai HTTPS.
+- Rate limit login (5 percobaan per menit per IP, di memori), cookie `HttpOnly; SameSite=Lax`, ditambah `Secure` bila memakai HTTPS. Pesan login gagal sama untuk user tidak dikenal dan password salah, dan waktunya juga sama (hash dummy).
+- CSRF: `http.CrossOriginProtection` dari stdlib (Go 1.25+) menolak request non-GET lintas origin lewat header `Sec-Fetch-Site`/`Origin`, tanpa token. Ditambah `SameSite=Lax` sebagai lapisan kedua.
+- Password di-hash dengan argon2id (`golang.org/x/crypto/argon2`, 64 MiB, 3 pass, 4 thread, format PHC). Token sesi 130 bit acak; yang disimpan hanya SHA-256-nya. Reset password mengakhiri semua sesi user itu.
+- Error internal (SQL, file) dicatat di log dan klien hanya menerima `internal error`.
 - Header `Content-Security-Policy` ketat (tanpa inline script, tanpa CDN). Nama kamera dan input lain di-escape oleh Svelte.
 - URL webhook hanya boleh diatur admin. Tolak alamat loopback dan link-local secara default (cegah SSRF ke go2rtc/metadata).
 - **Tidak ada akun default.** `jaga start` menolak jalan bila belum ada admin atau `secret_key` kosong.
@@ -284,7 +290,7 @@ Estimasi total 7–10 minggu kerja part-time. Setiap fase menghasilkan sesuatu y
 - [x] Kerangka CLI: `jaga start`, `jaga version`, `jaga migrate`, flag global, load `jaga.yml` + env `JAGA_*` (PR #2; parsing pakai package `flag`, belum cobra)
 - [x] Migrasi awal: `users`, `cameras`, `segments`, `events`, `settings` (PR #3, plus `sessions`, `notifiers`)
 - [x] Service CRUD kamera + enkripsi URL (PR #3, AES-256-GCM, key HKDF dari `secret_key`)
-- [ ] Endpoint `POST /cameras/{id}/test` via ffprobe (logika yang sama dipakai `jaga probe`). Logika probe + `jaga probe <url>` sudah ada (`internal/probe`); endpoint HTTP-nya menunggu router di Fase 2
+- [x] Endpoint `POST /cameras/{id}/test` via ffprobe (logika yang sama dipakai `jaga probe`) (`jaga probe` di PR #5, endpoint bersama router Fase 2)
 - [x] Validasi URL kamera (skema `rtsp`/`rtsps` saja) + unit test untuk input jahat (`file:`, `exec:`, `-i`, newline) (PR #3, plus fuzz test)
 - [x] Builder argumen FFmpeg recording (copy, segment, fragmented MP4) (PR #4)
 - [x] Supervisor: spawn, baca segment list dari stdout, insert `segments` (PR #4)
@@ -296,8 +302,8 @@ Estimasi total 7–10 minggu kerja part-time. Setiap fase menghasilkan sesuatu y
 
 ### Fase 2 — API, auth & live view (±1–2 minggu)
 
-- [ ] Router chi, middleware sesi, login/logout, rate limit, CSRF
-- [ ] `jaga init` (wizard config + admin pertama) dan `jaga user add|passwd`
+- [x] Router `net/http` (stdlib, tanpa chi), middleware sesi, login/logout, rate limit, CSRF via `http.CrossOriginProtection` (stdlib), plus CRUD `/cameras`
+- [ ] `jaga init` (wizard config + admin pertama) dan `jaga user add|passwd`. `jaga user add|passwd` sudah ada (password dari stdin, tanpa echo di terminal); `jaga init` belum
 - [ ] `jaga doctor`: cek ffmpeg, go2rtc, izin `data_dir`, disk, port
 - [ ] Integrasi go2rtc: generate config lewat YAML marshaller, API hanya `127.0.0.1`, RTSP server go2rtc mati, reload saat berubah
 - [ ] Reverse proxy `/live/*` dengan cek sesi + whitelist path & nama stream (test: `/live/api/config` harus 403)
@@ -619,7 +625,7 @@ Semuanya dijalankan lewat satu binary `jaga`. Perintah sehari-hari cukup `jaga s
 | `jaga doctor` | Cek `ffmpeg`/`ffprobe`/go2rtc, izin tulis `data_dir`, sisa disk, port bentrok |
 | `jaga probe <rtsp-url>` | Uji URL kamera via ffprobe (codec, resolusi, fps, bitrate) tanpa menyimpannya |
 | `jaga camera list` | Daftar kamera beserta status (butuh server berjalan atau baca DB langsung) |
-| `jaga user add <nama> [--role admin\|viewer]` | Tambah user, password diminta interaktif |
+| `jaga user add <nama> [--role admin\|viewer]` | Tambah user (default `admin`). Password dibaca dari stdin: di terminal tanpa echo, atau lewat pipe (`echo … \| jaga user add ryan`) |
 | `jaga user passwd <nama>` | Reset password (untuk admin yang lupa password) |
 | `jaga migrate` | Jalankan migrasi DB tanpa start server |
 | `jaga backup [--out file.json]` | Export konfigurasi (kamera, notifier, user tanpa hash). Rekaman tidak ikut. |
@@ -670,7 +676,7 @@ $ jaga doctor
 - Parsing perintah: package `flag` dari standard library, satu `FlagSet` per perintah sehingga flag global boleh ditaruh sebelum atau sesudah perintah. Ganti ke `spf13/cobra` bila perintah mulai bertingkat (`jaga user add`, `jaga camera list`) atau butuh shell completion.
 - Output: `charmbracelet/lipgloss` untuk warna, `log/slog` dengan handler teks berwarna untuk TTY dan handler JSON untuk non-TTY.
 - Lokasi kode: `cmd/jaga/` hanya menangkap sinyal dan memanggil `cli.Run`, `internal/cli/` untuk tiap subcommand, `internal/config/` untuk `jaga.yml` + env, dan `internal/ui/term/` untuk palet dan simbol.
-- Sudah ada: `start`, `migrate`, `version`, `probe`. Belum ada (menyusul): `init`, `doctor`, `camera`, `user`, `backup`, `--no-color` dan banner berwarna (bersama `internal/ui/term`), versi go2rtc di `jaga version` (Fase 2).
+- Sudah ada: `start`, `migrate`, `version`, `probe`, `user add|passwd`. Belum ada (menyusul): `init`, `doctor`, `camera`, `backup`, `--no-color` dan banner berwarna (bersama `internal/ui/term`), versi go2rtc di `jaga version` (Fase 2).
 
 ### Contoh output `jaga probe`
 
@@ -681,7 +687,7 @@ $ jaga probe rtsp://admin:pass@192.168.0.60:554/stream1 --seconds 6
   audio  AAC 16000 Hz 1 ch  32 kbps
 ```
 
-Default 5 detik sampling (`--seconds 1-60`). Password di URL selalu disamarkan, juga di pesan error (`404 Not Found`, `Connection refused`). Logikanya (`internal/probe`) sama dengan yang nanti dipakai `POST /cameras/{id}/test`.
+Default 5 detik sampling (`--seconds 1-60`). Password di URL selalu disamarkan, juga di pesan error (`404 Not Found`, `Connection refused`). Logikanya (`internal/probe`) sama dengan yang dipakai `POST /cameras/{id}/test`.
 
 ## Lisensi & kepatuhan open source
 

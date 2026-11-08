@@ -5,6 +5,7 @@
 package cli
 
 import (
+	"bufio"
 	"context"
 	"database/sql"
 	"errors"
@@ -12,6 +13,8 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -20,6 +23,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ryandinulfatah12/jaga/internal/api"
+	"github.com/ryandinulfatah12/jaga/internal/auth"
 	"github.com/ryandinulfatah12/jaga/internal/camera"
 	"github.com/ryandinulfatah12/jaga/internal/config"
 	"github.com/ryandinulfatah12/jaga/internal/db"
@@ -44,6 +49,8 @@ const usage = `Usage: jaga [flags] <command>
 Commands:
   start     run the server (default)
   migrate   apply database migrations and exit
+  user      user add <name> [--role admin|viewer] | user passwd <name>
+            (password read from stdin, hidden when it is a terminal)
   probe     probe <rtsp-url> [--seconds N]: codec, resolution, fps, bitrate (nothing stored)
   version   print version and detected dependencies
 
@@ -56,7 +63,8 @@ Flags:
 
 type globals struct {
 	config, dataDir, logLevel, logFormat string
-	seconds                              int // probe only
+	seconds                              int    // probe only
+	role                                 string // user add only
 }
 
 // register binds the global flags to fs. Defaults are the current values, so
@@ -67,7 +75,11 @@ func (g *globals) register(fs *flag.FlagSet) {
 	fs.StringVar(&g.logLevel, "log-level", g.logLevel, "")
 	fs.StringVar(&g.logFormat, "log-format", g.logFormat, "")
 	fs.IntVar(&g.seconds, "seconds", g.seconds, "")
+	fs.StringVar(&g.role, "role", g.role, "")
 }
+
+// stdin is read by `jaga user` for the password. A variable so tests can feed it.
+var stdin io.Reader = os.Stdin
 
 type env struct {
 	ctx            context.Context
@@ -79,7 +91,7 @@ type env struct {
 
 // Run executes jaga with args (without the program name) and returns the exit code.
 func Run(ctx context.Context, args []string, stdout, stderr io.Writer, lookup func(string) (string, bool)) int {
-	e := &env{ctx: ctx, stdout: stdout, stderr: stderr, lookup: lookup, g: globals{logLevel: "info", logFormat: "text", seconds: 5}}
+	e := &env{ctx: ctx, stdout: stdout, stderr: stderr, lookup: lookup, g: globals{logLevel: "info", logFormat: "text", seconds: 5, role: auth.RoleAdmin}}
 
 	root := newFlagSet("jaga")
 	e.g.register(root)
@@ -95,10 +107,12 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer, lookup fu
 	if err := sub.Parse(rest); err != nil {
 		return usageError(stderr, err)
 	}
-	// probe takes the URL as its one argument; flags may follow it.
-	var probeURL string
-	if cmd == "probe" && sub.NArg() > 0 {
-		probeURL = sub.Arg(0)
+	// probe <url> and user <action> <name> take positional arguments;
+	// flags may follow them.
+	var pos []string
+	want := map[string]int{"probe": 1, "user": 2}[cmd]
+	for len(pos) < want && sub.NArg() > 0 {
+		pos = append(pos, sub.Arg(0))
 		if err := sub.Parse(sub.Args()[1:]); err != nil {
 			return usageError(stderr, err)
 		}
@@ -121,10 +135,15 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer, lookup fu
 	case "version":
 		return e.version()
 	case "probe":
-		if probeURL == "" {
+		if len(pos) < 1 {
 			return usageError(stderr, errors.New("probe: missing <rtsp-url>"))
 		}
-		return e.probe(probeURL)
+		return e.probe(pos[0])
+	case "user":
+		if len(pos) < 2 || (pos[0] != "add" && pos[0] != "passwd") {
+			return usageError(stderr, errors.New("user: want `user add <name>` or `user passwd <name>`"))
+		}
+		return e.user(pos[0], pos[1])
 	case "help":
 		_, _ = fmt.Fprint(stdout, usage)
 		return exitOK
@@ -219,9 +238,8 @@ func (e *env) migrate() int {
 	return exitOK
 }
 
-// start runs until ctx is cancelled (SIGINT/SIGTERM in main).
-// ponytail: config, DB, recording supervisor and retention for now; the API
-// gets wired here in phase 2.
+// start runs until ctx is cancelled (SIGINT/SIGTERM in main): HTTP API,
+// recording supervisor and retention.
 func (e *env) start() int {
 	cfg, code := e.loadConfig()
 	if code != exitOK {
@@ -245,7 +263,17 @@ func (e *env) start() int {
 	}
 	defer closeDB()
 
-	all, err := camera.NewStore(conn, seal).List(e.ctx)
+	users := auth.NewStore(conn)
+	// No default account (docs/03-design.md, Keamanan).
+	if ok, err := users.HasAdmin(e.ctx); err != nil {
+		e.log.Error("users", "err", err)
+		return exitError
+	} else if !ok {
+		e.log.Error("no admin user yet, create one with: jaga user add <name>")
+		return exitConfig
+	}
+	cams := camera.NewStore(conn, seal)
+	all, err := cams.List(e.ctx)
 	if err != nil {
 		e.log.Error("load cameras", "err", err)
 		return exitError
@@ -266,14 +294,105 @@ func (e *env) start() int {
 		},
 	}
 
-	e.log.Info("ready", "version", version.Version, "data_dir", cfg.DataDir, "listen", cfg.Listen,
+	// Listen before "ready" so a taken port fails start instead of a goroutine.
+	ln, err := (&net.ListenConfig{}).Listen(e.ctx, "tcp", cfg.Listen)
+	if err != nil {
+		e.log.Error("listen", "addr", cfg.Listen, "err", err)
+		return exitError
+	}
+	srv := &http.Server{
+		Handler:           (&api.Server{Auth: users, Cameras: cams, Log: e.log, FFprobe: recorder.FFprobePath(ffmpeg)}).Handler(),
+		ReadHeaderTimeout: 10 * time.Second,
+		ErrorLog:          slog.NewLogLogger(e.log.Handler(), slog.LevelWarn),
+	}
+
+	e.log.Info("ready", "version", version.Version, "data_dir", cfg.DataDir, "listen", ln.Addr().String(),
 		"cameras", len(all), "recording", len(rec))
 	var wg sync.WaitGroup
 	wg.Go(func() { ret.Run(e.ctx) })
+	wg.Go(func() {
+		if err := srv.Serve(ln); !errors.Is(err, http.ErrServerClosed) {
+			e.log.Error("http", "err", err)
+		}
+	})
+	wg.Go(func() {
+		<-e.ctx.Done()
+		sctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(sctx) // in-flight requests get 5 s
+	})
 	sup.Run(e.ctx, rec) // returns after ctx is cancelled and every recorder has stopped
 	wg.Wait()
 	e.log.Info("shutting down")
 	return exitOK
+}
+
+// user adds a user or resets a password. The password is read from stdin,
+// one line, so it never shows up in argv, shell history or `ps`.
+func (e *env) user(action, name string) int {
+	cfg, code := e.loadConfig()
+	if code != exitOK {
+		return code
+	}
+	if action == "add" {
+		if err := auth.ValidateUser(name, "placeholder", e.g.role); err != nil {
+			return usageError(e.stderr, err) // bad name or role: say so before asking for a password
+		}
+	}
+	pw, err := readPassword(e.ctx, e.stderr, "Password for "+name+": ")
+	if err != nil {
+		e.log.Error("read password", "err", err)
+		return exitError
+	}
+	if err := auth.ValidatePassword(pw); err != nil {
+		return usageError(e.stderr, err)
+	}
+	conn, closeDB, code := e.openDB(cfg)
+	if code != exitOK {
+		return code
+	}
+	defer closeDB()
+	users := auth.NewStore(conn)
+	if action == "add" {
+		u, err := users.CreateUser(e.ctx, name, pw, e.g.role)
+		if err != nil {
+			e.log.Error("user add", "err", err)
+			return exitError
+		}
+		e.log.Info("user added", "user", u.Username, "role", u.Role)
+		return exitOK
+	}
+	if err := users.SetPassword(e.ctx, name, pw); err != nil {
+		e.log.Error("user passwd", "err", err)
+		return exitError
+	}
+	e.log.Info("password changed, sessions ended", "user", name)
+	return exitOK
+}
+
+// readPassword reads one line from stdin. On a terminal it turns echo off
+// with stty for the duration.
+// ponytail: stty works on Linux/macOS; golang.org/x/term would cover
+// Windows too, add it with the `jaga init` wizard.
+func readPassword(ctx context.Context, prompt io.Writer, label string) (string, error) {
+	if f, ok := stdin.(*os.File); ok {
+		if fi, err := f.Stat(); err == nil && fi.Mode()&os.ModeCharDevice != 0 {
+			_, _ = fmt.Fprint(prompt, label)
+			stty := func(arg string) error {
+				cmd := exec.CommandContext(ctx, "stty", arg) //nolint:gosec // fixed argv
+				cmd.Stdin = f                                // stty acts on its stdin, which must be the terminal
+				return cmd.Run()
+			}
+			if stty("-echo") == nil {
+				defer func() { _ = stty("echo"); _, _ = fmt.Fprintln(prompt) }()
+			}
+		}
+	}
+	line, err := bufio.NewReader(stdin).ReadString('\n')
+	if err != nil && (!errors.Is(err, io.EOF) || line == "") {
+		return "", errors.New("no password on stdin")
+	}
+	return strings.TrimRight(line, "\r\n"), nil
 }
 
 // probe prints what ffprobe sees at url, the same check POST

@@ -73,7 +73,8 @@ Argumen dibangun sebagai slice oleh `internal/recorder` (`recorder.Build`) dan d
 
 | Method | Path | Fungsi |
 | --- | --- | --- |
-| POST | `/auth/login`, `/auth/logout` | sesi cookie |
+| POST | `/auth/login`, `/auth/logout` | sesi cookie (login dibatasi 5×/menit/IP) |
+| GET | `/auth/me` | user yang sedang login |
 | GET / POST | `/cameras` | list & tambah kamera |
 | GET / PATCH / DELETE | `/cameras/{id}` | detail, ubah, hapus |
 | POST | `/cameras/{id}/test` | probe RTSP via ffprobe |
@@ -88,6 +89,8 @@ Argumen dibangun sebagai slice oleh `internal/recorder` (`recorder.Build`) dan d
 | GET | `/ws` | WebSocket push status kamera & event realtime |
 | ANY | `/live/*` | reverse proxy ke go2rtc (WebRTC/MSE), dicek sesi |
 
+Sudah ada: `/auth/*`, `/cameras` (GET/POST), `/cameras/{id}` (GET/PATCH/DELETE), `/cameras/{id}/test`. Role `viewer` hanya boleh GET; tulis dan test kamera khusus `admin`. URL kamera di response selalu dimasking (`rtsp://***@host/...`). Error berbentuk `{"error": "..."}`.
+
 ### Keamanan
 
 - Semua endpoint, termasuk proxy live, wajib sesi valid.
@@ -99,7 +102,10 @@ Argumen dibangun sebagai slice oleh `internal/recorder` (`recorder.Build`) dan d
   - Config go2rtc ditulis lewat YAML marshaller, sehingga URL tidak pernah bisa menjadi source `exec:`/`ffmpeg:`.
 - Kredensial kamera tidak pernah dikirim ke frontend. API mengembalikan URL yang sudah dimasking, dan logger menyamarkan `user:pass@`.
 - **File diakses lewat ID, bukan path.** `/segments/{id}/file` mengambil path dari DB lalu memastikan hasil `filepath.Clean` berada di bawah `data_dir`. Daftar concat untuk export klip dibangun dari DB dengan cara yang sama.
-- Rate limit login (5 percobaan per menit per IP), CSRF token untuk request yang mengubah data, dan cookie `HttpOnly; SameSite=Lax`, ditambah `Secure` bila memakai HTTPS.
+- Rate limit login (5 percobaan per menit per IP, di memori), cookie `HttpOnly; SameSite=Lax`, ditambah `Secure` bila memakai HTTPS. Pesan login gagal sama untuk user tidak dikenal dan password salah, dan waktunya juga sama (hash dummy).
+- CSRF: `http.CrossOriginProtection` dari stdlib (Go 1.25+) menolak request non-GET lintas origin lewat header `Sec-Fetch-Site`/`Origin`, tanpa token. Ditambah `SameSite=Lax` sebagai lapisan kedua.
+- Password di-hash dengan argon2id (`golang.org/x/crypto/argon2`, 64 MiB, 3 pass, 4 thread, format PHC). Token sesi 130 bit acak; yang disimpan hanya SHA-256-nya. Reset password mengakhiri semua sesi user itu.
+- Error internal (SQL, file) dicatat di log dan klien hanya menerima `internal error`.
 - Header `Content-Security-Policy` ketat (tanpa inline script, tanpa CDN). Nama kamera dan input lain di-escape oleh Svelte.
 - URL webhook hanya boleh diatur admin. Tolak alamat loopback dan link-local secara default (cegah SSRF ke go2rtc/metadata).
 - **Tidak ada akun default.** `jaga start` menolak jalan bila belum ada admin atau `secret_key` kosong.

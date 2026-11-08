@@ -11,7 +11,7 @@ Semuanya dijalankan lewat satu binary `jaga`. Perintah sehari-hari cukup `jaga s
 | `jaga doctor` | Cek `ffmpeg`/`ffprobe`/go2rtc, izin tulis `data_dir`, sisa disk, port bentrok |
 | `jaga probe <rtsp-url>` | Uji URL kamera via ffprobe (codec, resolusi, fps, bitrate) tanpa menyimpannya |
 | `jaga camera list` | Daftar kamera beserta status (butuh server berjalan atau baca DB langsung) |
-| `jaga user add <nama> [--role admin\|viewer]` | Tambah user, password diminta interaktif |
+| `jaga user add <nama> [--role admin\|viewer]` | Tambah user (default `admin`). Password dibaca dari stdin: di terminal tanpa echo, atau lewat pipe (`echo … \| jaga user add ryan`) |
 | `jaga user passwd <nama>` | Reset password (untuk admin yang lupa password) |
 | `jaga migrate` | Jalankan migrasi DB tanpa start server |
 | `jaga backup [--out file.json]` | Export konfigurasi (kamera, notifier, user tanpa hash). Rekaman tidak ikut. |
@@ -62,7 +62,7 @@ $ jaga doctor
 - Parsing perintah: package `flag` dari standard library, satu `FlagSet` per perintah sehingga flag global boleh ditaruh sebelum atau sesudah perintah. Ganti ke `spf13/cobra` bila perintah mulai bertingkat (`jaga user add`, `jaga camera list`) atau butuh shell completion.
 - Output: `charmbracelet/lipgloss` untuk warna, `log/slog` dengan handler teks berwarna untuk TTY dan handler JSON untuk non-TTY.
 - Lokasi kode: `cmd/jaga/` hanya menangkap sinyal dan memanggil `cli.Run`, `internal/cli/` untuk tiap subcommand, `internal/config/` untuk `jaga.yml` + env, dan `internal/ui/term/` untuk palet dan simbol.
-- Sudah ada: `start`, `migrate`, `version`, `probe`. Belum ada (menyusul): `init`, `doctor`, `camera`, `user`, `backup`, `--no-color` dan banner berwarna (bersama `internal/ui/term`), versi go2rtc di `jaga version` (Fase 2).
+- Sudah ada: `start`, `migrate`, `version`, `probe`, `user add|passwd`. Belum ada (menyusul): `init`, `doctor`, `camera`, `backup`, `--no-color` dan banner berwarna (bersama `internal/ui/term`), versi go2rtc di `jaga version` (Fase 2).
 
 ### Contoh output `jaga probe`
 
@@ -73,4 +73,4 @@ $ jaga probe rtsp://admin:pass@192.168.0.60:554/stream1 --seconds 6
   audio  AAC 16000 Hz 1 ch  32 kbps
 ```
 
-Default 5 detik sampling (`--seconds 1-60`). Password di URL selalu disamarkan, juga di pesan error (`404 Not Found`, `Connection refused`). Logikanya (`internal/probe`) sama dengan yang nanti dipakai `POST /cameras/{id}/test`.
+Default 5 detik sampling (`--seconds 1-60`). Password di URL selalu disamarkan, juga di pesan error (`404 Not Found`, `Connection refused`). Logikanya (`internal/probe`) sama dengan yang dipakai `POST /cameras/{id}/test`.
