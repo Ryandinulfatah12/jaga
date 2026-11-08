@@ -6,6 +6,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -27,6 +28,8 @@ type cameraOut struct {
 	RetentionDays *int            `json:"retention_days"`
 	MotionMode    string          `json:"motion_mode"`
 	MotionConfig  json.RawMessage `json:"motion_config"`
+	ONVIFPort     *int            `json:"onvif_port"`
+	PTZ           bool            `json:"ptz"` // onvif_port is set, so the UI shows PTZ controls
 	CreatedAt     time.Time       `json:"created_at"`
 }
 
@@ -35,6 +38,7 @@ func out(c camera.Camera) cameraOut {
 		ID: c.ID, Name: c.Name, MainURL: camera.MaskURL(c.MainURL), Enabled: c.Enabled,
 		RecordMode: c.RecordMode, RecordAudio: c.RecordAudio, SegmentSec: c.SegmentSec,
 		RetentionDays: c.RetentionDays, MotionMode: c.MotionMode, MotionConfig: c.MotionConfig, CreatedAt: c.CreatedAt,
+		ONVIFPort: c.ONVIFPort, PTZ: c.ONVIFPort != nil,
 	}
 	if c.SubURL != "" {
 		o.SubURL = camera.MaskURL(c.SubURL)
@@ -55,6 +59,7 @@ type cameraIn struct {
 	RetentionDays json.RawMessage  `json:"retention_days"`
 	MotionMode    *string          `json:"motion_mode"`
 	MotionConfig  *json.RawMessage `json:"motion_config"`
+	ONVIFPort     json.RawMessage  `json:"onvif_port"` // null turns ONVIF off
 }
 
 func (in cameraIn) apply(c *camera.Camera) error {
@@ -80,17 +85,27 @@ func (in cameraIn) apply(c *camera.Camera) error {
 	if in.MotionConfig != nil {
 		c.MotionConfig = *in.MotionConfig
 	}
-	if in.RetentionDays != nil {
-		if string(in.RetentionDays) == "null" {
-			c.RetentionDays = nil
-		} else {
-			var d int
-			if err := json.Unmarshal(in.RetentionDays, &d); err != nil {
-				return errors.New("retention_days must be an integer or null")
-			}
-			c.RetentionDays = &d
-		}
+	if err := nullableInt(in.RetentionDays, &c.RetentionDays, "retention_days"); err != nil {
+		return err
 	}
+	return nullableInt(in.ONVIFPort, &c.ONVIFPort, "onvif_port")
+}
+
+// nullableInt applies a JSON field that may be absent (keep), null (clear)
+// or an integer.
+func nullableInt(raw json.RawMessage, dst **int, name string) error {
+	if raw == nil {
+		return nil
+	}
+	if string(raw) == "null" {
+		*dst = nil
+		return nil
+	}
+	var v int
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return errors.New(name + " must be an integer or null")
+	}
+	*dst = &v
 	return nil
 }
 
@@ -241,7 +256,8 @@ func (s *Server) changed() {
 }
 
 // snapshot returns the latest JPEG of a camera, from its sub stream when it
-// has one (smaller, and usually H.264 even when main is H.265).
+// has one (smaller, and usually H.264 even when main is H.265). ?stream=main
+// asks for full resolution, ?download=1 adds a file name for saving.
 func (s *Server) snapshot(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(w, r)
 	if !ok {
@@ -252,12 +268,16 @@ func (s *Server) snapshot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	src := live.StreamName(id, true)
-	if !s.Live.HasStream(src) {
+	if r.URL.Query().Get("stream") == "main" || !s.Live.HasStream(src) {
 		src = live.StreamName(id, false)
 	}
 	if !s.Live.HasStream(src) {
 		writeError(w, http.StatusNotFound, "camera not found or disabled")
 		return
+	}
+	if r.URL.Query().Get("download") == "1" {
+		name := fmt.Sprintf("jaga-camera%d-%s.jpg", id, time.Now().Format("20060102-150405"))
+		w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
 	}
 	r2 := r.Clone(r.Context())
 	r2.URL.Path = "/live/api/frame.jpeg"

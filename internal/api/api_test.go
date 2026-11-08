@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -22,6 +23,7 @@ import (
 	"github.com/ryandinulfatah12/jaga/internal/camera"
 	"github.com/ryandinulfatah12/jaga/internal/db"
 	"github.com/ryandinulfatah12/jaga/internal/live"
+	"github.com/ryandinulfatah12/jaga/internal/onvif/onviftest"
 	"github.com/ryandinulfatah12/jaga/internal/probe"
 	"github.com/ryandinulfatah12/jaga/internal/status"
 	"github.com/ryandinulfatah12/jaga/migrations"
@@ -438,4 +440,60 @@ func TestStatusAndEventStream(t *testing.T) {
 		t.Errorf("stopped shown as %s, want idle", l)
 	}
 	next(": ping")
+}
+
+func TestPTZ(t *testing.T) {
+	f := newFixture(t)
+	cam := &onviftest.Camera{User: "u", Pass: "p@ss"}
+	onv := httptest.NewServer(cam)
+	defer onv.Close()
+	host, port, _ := net.SplitHostPort(strings.TrimPrefix(onv.URL, "http://"))
+
+	admin := f.client(t, "admin", "admin-pass")
+	_, body := f.do(t, admin, "POST", "/api/v1/cameras", `{"name":"tapo","main_url":"rtsp://u:p%40ss@`+host+`:554/stream1"}`)
+	var c cameraOut
+	_ = json.Unmarshal([]byte(body), &c)
+	path := fmt.Sprintf("/api/v1/cameras/%d/ptz", c.ID)
+	if c.PTZ {
+		t.Fatalf("ptz without onvif_port: %s", body)
+	}
+	if code, body := f.do(t, admin, "POST", path, `{"action":"move","pan":1}`); code != 422 {
+		t.Errorf("no onvif_port = %d %s", code, body)
+	}
+	if code, body := f.do(t, admin, "PATCH", fmt.Sprintf("/api/v1/cameras/%d", c.ID), `{"onvif_port":`+port+`}`); code != 200 || !strings.Contains(body, `"ptz":true`) {
+		t.Fatalf("set onvif_port = %d %s", code, body)
+	}
+
+	// Viewers may point the camera: it changes no setting.
+	viewer := f.client(t, "viewer", "viewer-pass")
+	for _, b := range []string{`{"action":"move","pan":0.5,"tilt":-1}`, `{"action":"move","pan":0.5,"tilt":-1}`, `{"action":"stop"}`} {
+		if code, body := f.do(t, viewer, "POST", path, b); code != 204 {
+			t.Errorf("%s = %d %s", b, code, body)
+		}
+	}
+	want := "ContinuousMove main x=0.500 y=-1.000 PT1S|ContinuousMove main x=0.500 y=-1.000 PT1S|Stop"
+	if got := strings.Join(cam.Calls(), "|"); got != want {
+		t.Errorf("camera calls = %q, want %q", got, want)
+	}
+	for _, b := range []string{`{"action":"spin"}`, `{"action":"move","pan":2}`} {
+		if code, _ := f.do(t, viewer, "POST", path, b); code != 422 {
+			t.Errorf("%s = %d", b, code)
+		}
+	}
+
+	// Wrong camera password: 502 with the camera's reason, never the URL.
+	cam.Pass = "changed"
+	code, body := f.do(t, admin, "POST", path, `{"action":"stop"}`)
+	if code != 502 || !strings.Contains(body, "Authority failure") || strings.Contains(body, "p@ss") || strings.Contains(body, "p%40ss") {
+		t.Errorf("wrong password = %d %s", code, body)
+	}
+	if code, body := f.do(t, admin, "PATCH", fmt.Sprintf("/api/v1/cameras/%d", c.ID), `{"onvif_port":null}`); code != 200 || !strings.Contains(body, `"ptz":false`) {
+		t.Errorf("clear onvif_port = %d %s", code, body)
+	}
+	if code, _ := f.do(t, admin, "PATCH", fmt.Sprintf("/api/v1/cameras/%d", c.ID), `{"onvif_port":70000}`); code != 422 {
+		t.Errorf("bad onvif_port = %d", code)
+	}
+	if code, _ := f.do(t, &http.Client{}, "POST", path, `{"action":"stop"}`); code != 401 {
+		t.Errorf("anonymous = %d", code)
+	}
 }

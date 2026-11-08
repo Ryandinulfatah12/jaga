@@ -44,7 +44,12 @@ type Camera struct {
 	RetentionDays *int // nil: storage.default_retention_days
 	MotionMode    string
 	MotionConfig  json.RawMessage // JSON object
-	CreatedAt     time.Time
+	// ONVIFPort enables PTZ through ONVIF on the main_url host, with the
+	// main_url credentials. Nil: no ONVIF.
+	// ponytail: same host and account as RTSP (true for Tapo and most
+	// cameras); add onvif_user/onvif_pass if a camera ever splits them.
+	ONVIFPort *int
+	CreatedAt time.Time
 }
 
 // New returns a camera with the schema defaults filled in.
@@ -90,6 +95,8 @@ func (c Camera) Validate() error {
 		return bad("segment_sec %d, want 10-3600", c.SegmentSec)
 	case c.RetentionDays != nil && *c.RetentionDays < 1:
 		return bad("retention_days %d, want at least 1", *c.RetentionDays)
+	case c.ONVIFPort != nil && (*c.ONVIFPort < 1 || *c.ONVIFPort > 65535):
+		return bad("onvif_port %d, want 1-65535", *c.ONVIFPort)
 	}
 	var obj map[string]any
 	if err := json.Unmarshal(c.MotionConfig, &obj); err != nil || obj == nil {
@@ -139,7 +146,7 @@ func NewStore(db *sql.DB, seal *Sealer) *Store {
 }
 
 const columns = `id, name, main_url, sub_url, enabled, record_mode, record_audio,
-	segment_sec, retention_days, motion_mode, motion_config, created_at`
+	segment_sec, retention_days, motion_mode, motion_config, onvif_port, created_at`
 
 // Create stores c and returns it with ID and CreatedAt set.
 func (s *Store) Create(ctx context.Context, c Camera) (Camera, error) {
@@ -149,11 +156,11 @@ func (s *Store) Create(ctx context.Context, c Camera) (Camera, error) {
 	main, sub := s.sealURLs(c)
 	row := s.db.QueryRowContext(ctx, `
 		INSERT INTO cameras (name, main_url, sub_url, enabled, record_mode, record_audio,
-			segment_sec, retention_days, motion_mode, motion_config)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			segment_sec, retention_days, motion_mode, motion_config, onvif_port)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		RETURNING `+columns,
 		c.Name, main, sub, c.Enabled, c.RecordMode, c.RecordAudio,
-		c.SegmentSec, c.RetentionDays, c.MotionMode, string(c.MotionConfig))
+		c.SegmentSec, c.RetentionDays, c.MotionMode, string(c.MotionConfig), c.ONVIFPort)
 	out, err := s.scan(row)
 	return out, mapErr(err)
 }
@@ -166,11 +173,12 @@ func (s *Store) Update(ctx context.Context, c Camera) (Camera, error) {
 	main, sub := s.sealURLs(c)
 	row := s.db.QueryRowContext(ctx, `
 		UPDATE cameras SET name = ?, main_url = ?, sub_url = ?, enabled = ?, record_mode = ?,
-			record_audio = ?, segment_sec = ?, retention_days = ?, motion_mode = ?, motion_config = ?
+			record_audio = ?, segment_sec = ?, retention_days = ?, motion_mode = ?, motion_config = ?,
+			onvif_port = ?
 		WHERE id = ?
 		RETURNING `+columns,
 		c.Name, main, sub, c.Enabled, c.RecordMode, c.RecordAudio,
-		c.SegmentSec, c.RetentionDays, c.MotionMode, string(c.MotionConfig), c.ID)
+		c.SegmentSec, c.RetentionDays, c.MotionMode, string(c.MotionConfig), c.ONVIFPort, c.ID)
 	out, err := s.scan(row)
 	return out, mapErr(err)
 }
@@ -230,11 +238,12 @@ func (s *Store) scan(r scanner) (Camera, error) {
 		c         Camera
 		main, sub []byte
 		retention sql.NullInt64
+		onvifPort sql.NullInt64
 		motionCfg string
 		created   int64
 	)
 	if err := r.Scan(&c.ID, &c.Name, &main, &sub, &c.Enabled, &c.RecordMode, &c.RecordAudio,
-		&c.SegmentSec, &retention, &c.MotionMode, &motionCfg, &created); err != nil {
+		&c.SegmentSec, &retention, &c.MotionMode, &motionCfg, &onvifPort, &created); err != nil {
 		return Camera{}, err
 	}
 	var err error
@@ -249,6 +258,10 @@ func (s *Store) scan(r scanner) (Camera, error) {
 	if retention.Valid {
 		d := int(retention.Int64)
 		c.RetentionDays = &d
+	}
+	if onvifPort.Valid {
+		port := int(onvifPort.Int64)
+		c.ONVIFPort = &port
 	}
 	c.MotionConfig = json.RawMessage(motionCfg)
 	c.CreatedAt = time.Unix(created, 0).UTC()

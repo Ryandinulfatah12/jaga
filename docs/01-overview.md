@@ -15,7 +15,7 @@
 
 ### Non-goals (versi awal)
 
-- Transcoding, PTZ control, rekaman audio dua arah
+- Transcoding, rekaman audio dua arah (PTZ dasar via ONVIF sudah ada sejak Fase 3)
 - Object detection AI (direncanakan sebagai plugin fase akhir)
 - Cluster multi-node dan cloud storage
 

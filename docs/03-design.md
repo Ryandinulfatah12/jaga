@@ -79,6 +79,7 @@ Argumen dibangun sebagai slice oleh `internal/recorder` (`recorder.Build`) dan d
 | GET / PATCH / DELETE | `/cameras/{id}` | detail, ubah, hapus |
 | POST | `/cameras/{id}/test` | probe RTSP via ffprobe |
 | GET | `/cameras/{id}/status` | state recorder (`idle`, `starting`, `recording`, `retrying`, `offline`), sejak kapan, error terakhir |
+| POST | `/cameras/{id}/ptz` | `{"action":"move","pan":-1..1,"tilt":-1..1,"zoom":-1..1}` atau `{"action":"stop"}`; 204, 422 bila kamera tanpa `onvif_port`, 502 bila kamera menolak (pesan dari kamera, tanpa URL) |
 | GET | `/cameras/{id}/snapshot` | JPEG terbaru |
 | GET | `/cameras/{id}/segments?from=&to=` | data timeline |
 | GET | `/segments/{id}/file` | stream MP4 dengan HTTP Range |
@@ -89,7 +90,7 @@ Argumen dibangun sebagai slice oleh `internal/recorder` (`recorder.Build`) dan d
 | GET | `/events/stream` | Server-Sent Events: `snapshot` semua kamera saat tersambung, lalu `status` per perubahan; `: ping` tiap 25 s |
 | ANY | `/live/*` | reverse proxy ke go2rtc (WebRTC/MSE), dicek sesi |
 
-Sudah ada: `/auth/*`, `/cameras` (GET/POST), `/cameras/{id}` (GET/PATCH/DELETE), `/cameras/{id}/test`, `/cameras/{id}/snapshot` (502 bila kamera tidak terjangkau), `/cameras/{id}/status`, `/events/stream`, `/live/*`. Perubahan kamera lewat API langsung diterapkan ke recorder (start/stop/restart hanya kamera yang berubah; rename tidak me-restart) dan ke go2rtc. Role `viewer` hanya boleh GET; tulis dan test kamera khusus `admin`. URL kamera di response selalu dimasking (`rtsp://***@host/...`). Error berbentuk `{"error": "..."}`.
+Sudah ada: `/auth/*`, `/cameras` (GET/POST), `/cameras/{id}` (GET/PATCH/DELETE), `/cameras/{id}/test`, `/cameras/{id}/snapshot` (502 bila kamera tidak terjangkau; `?stream=main` resolusi penuh, `?download=1` dengan nama file), `/cameras/{id}/status`, `/events/stream`, `/live/*`. Perubahan kamera lewat API langsung diterapkan ke recorder (start/stop/restart hanya kamera yang berubah; rename tidak me-restart) dan ke go2rtc. Role `viewer` hanya boleh GET, ditambah `POST /cameras/{id}/ptz` (hanya mengarahkan kamera, tidak mengubah setting); tulis dan test kamera khusus `admin`. PTZ: tiap `move` diberi timeout 1 s di kamera dan UI mengulangnya selama tombol ditahan, jadi tab yang tertutup tidak membuat kamera terus berputar. URL kamera di response selalu dimasking (`rtsp://***@host/...`). Error berbentuk `{"error": "..."}`.
 
 ### Keamanan
 

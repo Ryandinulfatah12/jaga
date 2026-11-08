@@ -53,6 +53,7 @@ type Server struct {
 
 	// Limit is the login rate limit; nil means 5 per minute per IP.
 	Limit *auth.Limiter
+	ptzs  ptzCache
 	// probe is replaceable in tests.
 	probe func(ctx context.Context, ffprobe, url string, sample time.Duration) (probe.Result, error)
 }
@@ -85,6 +86,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /api/v1/cameras/{id}/test", admin(s.testCamera))
 	mux.Handle("GET /api/v1/cameras/{id}/snapshot", user(s.snapshot))
 	mux.Handle("GET /api/v1/cameras/{id}/status", user(s.cameraStatus))
+	mux.Handle("POST /api/v1/cameras/{id}/ptz", user(s.ptz))
 	mux.Handle("GET /api/v1/events/stream", user(s.eventStream))
 	if s.Live != nil {
 		mux.Handle("/live/", user(s.Live.ServeHTTP))
