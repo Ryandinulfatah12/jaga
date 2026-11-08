@@ -314,7 +314,7 @@ func (e *env) start() int {
 	}
 	lv := e.liveView(cfg, all)
 	apiSrv := &api.Server{Auth: users, Cameras: cams, Log: e.log, FFprobe: recorder.FFprobePath(ffmpeg), Status: hub, UI: web.Handler(),
-		DB: conn, DataDir: cfg.DataDir}
+		DB: conn, DataDir: cfg.DataDir, FFmpeg: ffmpeg}
 	if lv != nil {
 		apiSrv.Live = lv.proxy
 	}

@@ -584,3 +584,70 @@ func TestSegmentsAndFile(t *testing.T) {
 		t.Errorf("anonymous = %d", code)
 	}
 }
+
+func TestClip(t *testing.T) {
+	f := newFixture(t)
+	admin := f.client(t, "admin", "admin-pass")
+	_, body := f.do(t, admin, "POST", "/api/v1/cameras", `{"name":"c","main_url":"rtsp://10.0.0.2/main"}`)
+	var c cameraOut
+	_ = json.Unmarshal([]byte(body), &c)
+	dir := filepath.Join(f.s.DataDir, "recordings", fmt.Sprint(c.ID), "2026-11-08")
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range []string{"a.mp4", "c.mp4"} {
+		if err := os.WriteFile(filepath.Join(dir, n), []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, s := range []struct {
+		path       string
+		start, end int64
+	}{
+		{fmt.Sprintf("recordings/%d/2026-11-08/a.mp4", c.ID), 10_000, 20_000},
+		{fmt.Sprintf("recordings/%d/2026-11-08/b.mp4", c.ID), 20_000, 30_000}, // file gone
+		{"recordings/../../etc/passwd", 30_000, 40_000},
+		{fmt.Sprintf("recordings/%d/2026-11-08/c.mp4", c.ID), 40_000, 50_000},
+	} {
+		if _, err := f.s.DB.ExecContext(t.Context(), `INSERT INTO segments (camera_id, path, start_ts, end_ts, size_bytes) VALUES (?, ?, ?, ?, 1)`, c.ID, s.path, s.start, s.end); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	list, first, err := f.s.concatList(t.Context(), c.ID, 12_500, 45_000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "ffconcat version 1.0\nfile 'file:" + filepath.Join(dir, "a.mp4") + "'\ninpoint 2.500\nfile 'file:" + filepath.Join(dir, "c.mp4") + "'\n"
+	if list != want || first != 10_000 {
+		t.Errorf("list (first %d) =\n%s\nwant\n%s", first, list, want)
+	}
+	if list, _, _ := f.s.concatList(t.Context(), c.ID, 5_000, 15_000); strings.Contains(list, "inpoint") {
+		t.Errorf("range before the first segment needs no inpoint:\n%s", list)
+	}
+
+	viewer := f.client(t, "viewer", "viewer-pass")
+	clip := func(id int64, q string) int {
+		code, _ := f.do(t, viewer, "GET", fmt.Sprintf("/api/v1/cameras/%d/clip?%s", id, q), "")
+		return code
+	}
+	for q, want := range map[string]int{
+		"from=2&to=1": 422, "from=x&to=1": 422, "to=5": 422,
+		fmt.Sprintf("from=0&to=%d", (2*time.Hour + time.Millisecond).Milliseconds()): 422,
+		"from=60000&to=70000": 503, // no FFmpeg configured in the fixture
+	} {
+		if code := clip(c.ID, q); code != want {
+			t.Errorf("%s = %d, want %d", q, code, want)
+		}
+	}
+	f.s.FFmpeg = "ffmpeg"
+	if code := clip(c.ID, "from=60000&to=70000"); code != 404 {
+		t.Errorf("empty range = %d, want 404", code)
+	}
+	if code := clip(999, "from=0&to=1"); code != 404 {
+		t.Errorf("unknown camera = %d", code)
+	}
+	if code, _ := f.do(t, &http.Client{}, "GET", fmt.Sprintf("/api/v1/cameras/%d/clip?from=0&to=1", c.ID), ""); code != 401 {
+		t.Errorf("anonymous = %d", code)
+	}
+}
