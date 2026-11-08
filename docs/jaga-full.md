@@ -168,11 +168,10 @@ Video selalu di-copy. Audio (bila `record_audio`) di-encode ke AAC karena kamera
 | GET | `/cameras/{id}/snapshot` | JPEG terbaru |
 | GET | `/cameras/{id}/segments?from=&to=` | data timeline |
 | GET | `/segments/{id}/file` | stream MP4 dengan HTTP Range |
-| GET | `/system` | versi, load, RAM, disk, rekaman per kamera |
 | GET | `/cameras/{id}/clip?from=&to=` | gabung segmen via concat demuxer (copy) |
 | GET | `/events?camera=&from=&to=&type=` | daftar event |
 | GET / POST / PATCH | `/notifiers` | konfigurasi notifikasi |
-| GET | `/system` | CPU, RAM, disk, versi |
+| GET | `/system` | versi, load, RAM, disk, rekaman per kamera |
 | GET | `/events/stream` | Server-Sent Events: `snapshot` semua kamera saat tersambung, lalu `status` per perubahan; `: ping` tiap 25 s |
 | ANY | `/live/*` | reverse proxy ke go2rtc (WebRTC/MSE), dicek sesi |
 
