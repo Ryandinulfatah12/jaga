@@ -13,7 +13,12 @@
   let loaded = $state(false)
   let layout = $state(Number(localStorage.getItem('jaga-grid')) || 4)
   let page = $state(0)
-  let open = $state(null) // camera shown full size, main stream
+  let open = $state(null) // camera shown full size
+  // Cameras like the Tapo C2xx refuse a second RTSP session on the main
+  // stream while the recorder holds it, so a recording camera with a sub
+  // stream is watched full size on the sub stream.
+  // ponytail: per-camera main/sub switch if a camera allows two sessions.
+  const fullSub = (c) => !!c.sub_url && c.enabled && c.record_mode === 'continuous'
   let muted = $state(true)
   let shot = $state('') // snapshot feedback
 
@@ -61,7 +66,7 @@
   // Full-resolution JPEG, saved by the browser (Content-Disposition).
   async function snapshot() {
     shot = 'Saving…'
-    const res = await fetch(`/api/v1/cameras/${open.id}/snapshot?stream=main&download=1`, { credentials: 'same-origin' })
+    const res = await fetch(`/api/v1/cameras/${open.id}/snapshot?download=1${fullSub(open) ? '' : '&stream=main'}`, { credentials: 'same-origin' })
     if (!res.ok) {
       shot = '✗ ' + ((await res.json().catch(() => null))?.error ?? res.statusText)
       return
@@ -80,18 +85,18 @@
   <div class="fixed inset-0 z-30 flex h-dvh flex-col bg-black p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]" role="dialog" aria-modal="true" aria-label={open.name}>
     <div class="mb-2 flex items-center gap-3 text-white">
       <span class="font-medium">{open.name}</span>
-      <span class="text-xs text-neutral-400">main stream</span>
+      <span class="text-xs text-neutral-400" title={fullSub(open) ? 'The main stream is in use by recording' : ''}>{fullSub(open) ? 'sub stream (main is recording)' : 'main stream'}</span>
       <button class="ml-auto rounded-full border border-white/15 px-4 py-1 hover:bg-white/10" onclick={close}>Close<span class="hidden [@media(hover:hover)]:inline"> (Esc)</span></button>
     </div>
     <div class="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
       <!-- Phones: video pinned to the top like a camera app, controls in the thumb zone below. -->
       <div class="min-h-0 shrink lg:flex-1 max-lg:aspect-video max-lg:w-full">
-        <LiveTile camera={open} stream={`cam${open.id}`} big {muted} />
+        <LiveTile camera={open} stream={fullSub(open) ? `cam${open.id}_sub` : `cam${open.id}`} big {muted} />
       </div>
       <!-- Controls, like a phone camera app: under the video on small screens, beside it on wide ones. -->
       <aside class="glass flex shrink-0 flex-wrap items-center justify-center gap-5 rounded-lg p-4 text-white lg:w-60 lg:flex-col">
         <div class="flex gap-2">
-          <button class="ctl" onclick={snapshot} aria-label="Save snapshot (full resolution)">
+          <button class="ctl" onclick={snapshot} aria-label="Save snapshot">
             <svg class="ctl-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z" /><circle cx="12" cy="13" r="3.5" /></svg>Snapshot
           </button>
           <button class="ctl" class:on={!muted} onclick={() => (muted = !muted)} aria-pressed={!muted} aria-label={muted ? 'Turn sound on' : 'Mute'}>

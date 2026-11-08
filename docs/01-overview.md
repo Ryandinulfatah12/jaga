@@ -2,7 +2,7 @@
 
 **Jaga** adalah NVR self-host yang merekam, menampilkan live, dan mendeteksi gerak dari kamera RTSP/ONVIF, berjalan sebagai **satu binary Go + SQLite** dengan FFmpeg sebagai worker. Arsitektur mengikuti pola Shinobi (monitor per kamera, segmen rekaman, event), tetapi ditulis ulang dari nol dan jauh lebih ringan. Namanya diambil dari kata "jaga" (menjaga, berjaga) dan sekaligus menjadi nama CLI-nya: `jaga start`.
 
-**Prinsip utama: tidak ada transcode.** Rekaman dan live view memakai stream asli kamera (`-c copy`). Pekerjaan CPU berat hanya untuk motion detection di sub-stream resolusi rendah.
+**Prinsip utama: tidak ada transcode video.** Rekaman dan live view memakai stream video asli kamera (`-c copy`); hanya audio rekaman (opsional) yang di-encode ke AAC karena G.711 tidak bisa masuk MP4. Pekerjaan CPU berat hanya untuk motion detection di sub-stream resolusi rendah.
 
 ### Scope MVP
 

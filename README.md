@@ -9,7 +9,7 @@
 
 ---
 
-Jaga records, streams and watches your RTSP cameras (including ONVIF cameras) from a single Go binary with SQLite. Video is never transcoded: recordings and live view use the camera's own stream (`-c copy`), so a mini PC can handle 16 cameras at 1080p.
+Jaga records, streams and watches your RTSP cameras (including ONVIF cameras) from a single Go binary with SQLite. Video is never transcoded: recordings and live view use the camera's own stream (`-c copy`), so a mini PC can handle 16 cameras at 1080p. Only optional recorded audio is converted to AAC, since the G.711 most cameras send cannot go into MP4.
 
 > **Status:** design phase. Nothing to install yet. See the [roadmap](docs/05-todo.md).
 

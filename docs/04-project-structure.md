@@ -55,7 +55,8 @@ secret_key: ${JAGA_SECRET_KEY}   # enkripsi URL kamera
 - Image multi-stage: build Node (frontend) → build Go (`CGO_ENABLED=0`, driver `modernc.org/sqlite`) → runtime `debian:bookworm-slim` + FFmpeg **build LGPL** yang di-pin (BtbN, butuh glibc) + binary go2rtc + `THIRD_PARTY_LICENSES/`. `ENTRYPOINT ["jaga"]`, `CMD ["start"]`. Berjalan sebagai user non-root. Alasan memakai LGPL dijelaskan di [Lisensi & kepatuhan](09-legal.md#ffmpeg).
 - `network_mode: host` direkomendasikan agar RTSP/WebRTC tidak terkendala NAT Docker; alternatif: publish 8080 dan port WebRTC 8555 TCP/UDP.
 - Volume `/data` di disk terpisah (HDD surveillance), bukan di disk OS.
-- Healthcheck: `GET /api/v1/system`.
+- Healthcheck: cek TCP ke port `listen` (nanti `GET /api/v1/system`).
+- Kamera seperti Tapo C2xx menolak sesi RTSP kedua ke main stream selama recorder memakainya, jadi tampilan full-size memakai sub stream untuk kamera yang sedang merekam. Relay lewat server RTSP go2rtc sengaja tidak dipakai: di go2rtc 1.9.15 username/password RTSP tidak ditegakkan untuk koneksi loopback, sehingga proses lain di host bisa mem-publish ke stream kamera dan rekaman bisa berisi video palsu.
 
 ```yaml
 services:

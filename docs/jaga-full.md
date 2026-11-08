@@ -6,7 +6,7 @@ Versi: 6 November 2026
 
 **Jaga** adalah NVR self-host yang merekam, menampilkan live, dan mendeteksi gerak dari kamera RTSP/ONVIF, berjalan sebagai **satu binary Go + SQLite** dengan FFmpeg sebagai worker. Arsitektur mengikuti pola Shinobi (monitor per kamera, segmen rekaman, event), tetapi ditulis ulang dari nol dan jauh lebih ringan. Namanya diambil dari kata "jaga" (menjaga, berjaga) dan sekaligus menjadi nama CLI-nya: `jaga start`.
 
-**Prinsip utama: tidak ada transcode.** Rekaman dan live view memakai stream asli kamera (`-c copy`). Pekerjaan CPU berat hanya untuk motion detection di sub-stream resolusi rendah.
+**Prinsip utama: tidak ada transcode video.** Rekaman dan live view memakai stream video asli kamera (`-c copy`); hanya audio rekaman (opsional) yang di-encode ke AAC karena G.711 tidak bisa masuk MP4. Pekerjaan CPU berat hanya untuk motion detection di sub-stream resolusi rendah.
 
 ### Scope MVP
 
@@ -119,7 +119,7 @@ Folder per tanggal membuat retensi cukup dengan menghapus folder lama, lalu meng
 ffmpeg -nostdin -hide_banner -nostats -loglevel warning -progress pipe:3 \
   -protocol_whitelist rtsp,rtsps,rtp,udp,tcp,tls \
   -rtsp_transport tcp -timeout 5000000 -i <main_url> \
-  -map 0:v [-map 0:a?  # hanya jika record_audio] -c copy \
+  -map 0:v -c:v copy [-map 0:a? -c:a aac -b:a 64k  # hanya jika record_audio] \
   -f segment -segment_time 600 -segment_format mp4 \
   -segment_format_options movflags=+frag_keyframe+empty_moov \
   -reset_timestamps 1 -strftime 1 \
@@ -127,7 +127,7 @@ ffmpeg -nostdin -hide_banner -nostats -loglevel warning -progress pipe:3 \
   /data/recordings/<id>/%Y-%m-%d/%Y%m%d-%H%M%S.mp4   # env TZ=UTC
 ```
 
-Argumen dibangun sebagai slice oleh `internal/recorder` (`recorder.Build`) dan dijalankan dengan `exec.Command` tanpa shell. URL divalidasi ulang di sana dan selalu menjadi satu argumen tepat setelah `-i`. `-loglevel warning` tetap menampilkan error koneksi (`Connection refused`, `404`) yang dibaca supervisor sebagai alasan restart. `-protocol_whitelist` mencegah URL seperti `file:` atau `concat:` dipakai untuk membaca file lokal. `-segment_list pipe:1` membuat FFmpeg menulis nama setiap segmen yang selesai ke stdout. Supervisor membacanya lalu meng-insert baris `segments` tanpa perlu polling filesystem. `end_ts` adalah waktu baris itu diterima dan `start_ts = end_ts − durasi` dari `ffprobe` file tersebut. Nama file tidak dipakai sebagai sumber waktu karena segmen pertama bisa telat ±3 s (FFmpeg baru membuka file setelah probing input), dan kolom start/end di CSV memuat offset timestamp kamera. Fragmented MP4 membuat file sering masih bisa diputar walau proses di-kill di tengah segmen, tetapi segmen itu tidak masuk list dan kadang rusak total. Karena itu rekonsiliasi saat startup dan setiap job retensi memeriksa file tanpa baris DB dengan `ffprobe`: file yang terbaca di-insert (`end_ts` = mtime), file rusak dihapus.
+Video selalu di-copy. Audio (bila `record_audio`) di-encode ke AAC karena kamera umumnya mengirim G.711 (Tapo, Hikvision, Dahua) yang tidak bisa masuk MP4; biayanya beberapa persen satu core per kamera. Argumen dibangun sebagai slice oleh `internal/recorder` (`recorder.Build`) dan dijalankan dengan `exec.Command` tanpa shell. URL divalidasi ulang di sana dan selalu menjadi satu argumen tepat setelah `-i`. `-loglevel warning` tetap menampilkan error koneksi (`Connection refused`, `404`) yang dibaca supervisor sebagai alasan restart. `-protocol_whitelist` mencegah URL seperti `file:` atau `concat:` dipakai untuk membaca file lokal. `-segment_list pipe:1` membuat FFmpeg menulis nama setiap segmen yang selesai ke stdout. Supervisor membacanya lalu meng-insert baris `segments` tanpa perlu polling filesystem. `end_ts` adalah waktu baris itu diterima dan `start_ts = end_ts − durasi` dari `ffprobe` file tersebut. Nama file tidak dipakai sebagai sumber waktu karena segmen pertama bisa telat ±3 s (FFmpeg baru membuka file setelah probing input), dan kolom start/end di CSV memuat offset timestamp kamera. Fragmented MP4 membuat file sering masih bisa diputar walau proses di-kill di tengah segmen, tetapi segmen itu tidak masuk list dan kadang rusak total. Karena itu rekonsiliasi saat startup dan setiap job retensi memeriksa file tanpa baris DB dengan `ffprobe`: file yang terbaca di-insert (`end_ts` = mtime), file rusak dihapus.
 
 ### State machine supervisor (per kamera)
 
@@ -344,7 +344,7 @@ Estimasi total 7–10 minggu kerja part-time. Setiap fase menghasilkan sesuatu y
 - [ ] Uji ketahanan 72 jam (memory leak, jumlah goroutine, file descriptor)
 - [ ] Auto-discovery ONVIF (WS-Discovery) di jaringan lokal
 - [ ] Backup/restore konfigurasi (`jaga backup`, export JSON)
-- [ ] Dockerfile multi-stage (debian-slim, FFmpeg LGPL ter-pin, user non-root) + docker-compose + README instalasi
+- [x] Dockerfile multi-stage (debian-slim, FFmpeg LGPL ter-pin, user non-root) + docker-compose (README instalasi menyusul)
 - [ ] Panduan "akses dari luar rumah": Tailscale/WireGuard atau reverse proxy + HTTPS, dengan peringatan agar tidak melakukan port forward
 - [ ] Review keamanan mandiri sebelum rilis: threat model, fuzz parser segment list & URL
 - [ ] Rilis v0.1 via GoReleaser: binary amd64 + arm64, image GHCR, checksum, SBOM, tanda tangan (cosign/attestation), tarball source FFmpeg ([checklist rilis](#checklist-setiap-rilis))
