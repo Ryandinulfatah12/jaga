@@ -601,3 +601,10 @@ func TestStatusRetryingThenOffline(t *testing.T) {
 	}
 	stop()
 }
+
+func TestLastLineSkipsRepeatNotice(t *testing.T) {
+	in := "[rtsp @ 0x1] Connection refused\n    Last message repeated 1 times\n[in#0 @ 0x2] Last message repeated 3 times\n\n"
+	if got := lastLine(strings.NewReader(in)); got != "[rtsp @ 0x1] Connection refused" {
+		t.Errorf("lastLine = %q", got)
+	}
+}

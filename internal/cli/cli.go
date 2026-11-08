@@ -36,6 +36,7 @@ import (
 	"github.com/ryandinulfatah12/jaga/internal/supervisor"
 	"github.com/ryandinulfatah12/jaga/internal/version"
 	"github.com/ryandinulfatah12/jaga/migrations"
+	"github.com/ryandinulfatah12/jaga/web"
 )
 
 // Exit codes, see docs/08-cli.md.
@@ -312,7 +313,7 @@ func (e *env) start() int {
 		return exitError
 	}
 	lv := e.liveView(cfg, all)
-	apiSrv := &api.Server{Auth: users, Cameras: cams, Log: e.log, FFprobe: recorder.FFprobePath(ffmpeg), Status: hub}
+	apiSrv := &api.Server{Auth: users, Cameras: cams, Log: e.log, FFprobe: recorder.FFprobePath(ffmpeg), Status: hub, UI: web.Handler()}
 	if lv != nil {
 		apiSrv.Live = lv.proxy
 	}

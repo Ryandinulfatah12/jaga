@@ -45,16 +45,16 @@ Estimasi total 7–10 minggu kerja part-time. Setiap fase menghasilkan sesuatu y
 
 ### Fase 3 — Frontend (±2 minggu)
 
-- [ ] Setup Tailwind + token brand ([palet](07-branding.md#palet-warna)), font Inter & JetBrains Mono di-embed
-- [ ] Halaman login & layout dasar (dark default, toggle light)
-- [ ] Grid live 1/4/9/16 dengan sub-stream, klik untuk fullscreen main-stream
-- [ ] Form tambah/edit kamera + tombol test koneksi
+- [x] Setup Tailwind + token brand ([palet](07-branding.md#palet-warna)), font Inter & JetBrains Mono di-embed (Svelte 5 + Vite, `web/`)
+- [x] Halaman login & layout dasar (dark default, toggle light)
+- [x] Grid live 1/4/9/16 dengan sub-stream, klik untuk fullscreen main-stream (MSE lewat WebSocket go2rtc, status realtime dari SSE)
+- [x] Form tambah/edit kamera + tombol test koneksi
 - [ ] Timeline playback: bar per jam, highlight segmen motion, seek via Range request
 - [ ] Export klip (pilih rentang → download)
 - [ ] Halaman sistem: CPU, RAM, disk, status tiap kamera
 - [ ] Halaman About: versi + daftar lisensi open source (embed `THIRD_PARTY_LICENSES`)
-- [ ] Header CSP ketat, font di-embed (tanpa CDN)
-- [ ] Embed hasil build ke binary Go
+- [x] Header CSP ketat, font di-embed (tanpa CDN)
+- [x] Embed hasil build ke binary Go (`make web build`, tag `webui`; tanpa build, binary menampilkan halaman placeholder)
 
 ### Fase 4 — Motion & notifikasi (±1–2 minggu)
 

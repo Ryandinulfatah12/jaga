@@ -525,11 +525,15 @@ func csvDuration(fields []string) time.Duration {
 	return time.Duration((end - start) * float64(time.Second))
 }
 
+// lastLine returns the last meaningful stderr line. FFmpeg's log
+// deduplication ("Last message repeated N times") is skipped: it says
+// nothing about why FFmpeg stopped.
 func lastLine(r io.Reader) string {
 	var last string
 	sc := bufio.NewScanner(r)
 	for sc.Scan() {
-		if l := strings.TrimSpace(sc.Text()); l != "" {
+		l := strings.TrimSpace(sc.Text())
+		if l != "" && !strings.HasPrefix(l, "Last message repeated") && !strings.Contains(l, "] Last message repeated") {
 			last = l
 		}
 	}
