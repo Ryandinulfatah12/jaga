@@ -175,7 +175,7 @@ Video selalu di-copy. Audio (bila `record_audio`) di-encode ke AAC karena kamera
 | GET | `/events/stream` | Server-Sent Events: `snapshot` semua kamera saat tersambung, lalu `status` per perubahan; `: ping` tiap 25 s |
 | ANY | `/live/*` | reverse proxy ke go2rtc (WebRTC/MSE), dicek sesi |
 
-Sudah ada: `/auth/*`, `/cameras` (GET/POST), `/cameras/{id}` (GET/PATCH/DELETE), `/cameras/{id}/test`, `/cameras/{id}/snapshot` (502 bila kamera tidak terjangkau; `?stream=main` resolusi penuh, `?download=1` dengan nama file), `/cameras/{id}/status`, `/events/stream`, `/live/*`. Perubahan kamera lewat API langsung diterapkan ke recorder (start/stop/restart hanya kamera yang berubah; rename tidak me-restart) dan ke go2rtc. Role `viewer` hanya boleh GET, ditambah `POST /cameras/{id}/ptz` (hanya mengarahkan kamera, tidak mengubah setting); tulis dan test kamera khusus `admin`. PTZ: tiap `move` diberi timeout 1 s di kamera dan UI mengulangnya selama tombol ditahan, jadi tab yang tertutup tidak membuat kamera terus berputar. URL kamera di response selalu dimasking (`rtsp://***@host/...`). Error berbentuk `{"error": "..."}`.
+Sudah ada: `/auth/*`, `/cameras` (GET/POST), `/cameras/{id}` (GET/PATCH/DELETE), `/cameras/{id}/test`, `/cameras/{id}/snapshot` (502 bila kamera tidak terjangkau; `?stream=main` resolusi penuh, `?download=1` dengan nama file), `/cameras/{id}/status`, `/cameras/{id}/segments?from=&to=` (Unix ms, overlap, maks 48 jam, `[]` bila kosong), `/segments/{id}/file` (Range, `?download=1`; path dari DB dicek `filepath.IsLocal` di bawah `recordings/`, 404 bila file sudah dihapus retensi), `/events/stream`, `/live/*`. Perubahan kamera lewat API langsung diterapkan ke recorder (start/stop/restart hanya kamera yang berubah; rename tidak me-restart) dan ke go2rtc. Role `viewer` hanya boleh GET, ditambah `POST /cameras/{id}/ptz` (hanya mengarahkan kamera, tidak mengubah setting); tulis dan test kamera khusus `admin`. PTZ: tiap `move` diberi timeout 1 s di kamera dan UI mengulangnya selama tombol ditahan, jadi tab yang tertutup tidak membuat kamera terus berputar. URL kamera di response selalu dimasking (`rtsp://***@host/...`). Error berbentuk `{"error": "..."}`.
 
 ### Keamanan
 
@@ -322,7 +322,7 @@ Estimasi total 7–10 minggu kerja part-time. Setiap fase menghasilkan sesuatu y
 - [x] Form tambah/edit kamera + tombol test koneksi
 - [x] Kontrol di tampilan full-size: snapshot resolusi penuh (download), suara on/off, pad pan & tilt (tahan, atau tombol panah)
 - [ ] Talk (audio dua arah) lewat WebRTC backchannel go2rtc, butuh HTTPS untuk mikrofon
-- [ ] Timeline playback: bar per jam, highlight segmen motion, seek via Range request
+- [x] Timeline playback: bar 24 jam per kamera per hari, highlight segmen motion, seek via Range request (`http.ServeContent`), lanjut otomatis ke segmen berikutnya, tombol panah ±1/10 menit, download segmen
 - [ ] Export klip (pilih rentang → download)
 - [ ] Halaman sistem: CPU, RAM, disk, status tiap kamera
 - [ ] Halaman About: versi + daftar lisensi open source (embed `THIRD_PARTY_LICENSES`)

@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -59,7 +60,8 @@ func newFixture(t *testing.T) *fixture {
 		}
 	}
 	logs := &strings.Builder{}
-	s := &Server{Auth: as, Cameras: camera.NewStore(conn, seal), Log: slog.New(slog.NewTextHandler(logs, nil)), FFprobe: "ffprobe"}
+	s := &Server{Auth: as, Cameras: camera.NewStore(conn, seal), Log: slog.New(slog.NewTextHandler(logs, nil)), FFprobe: "ffprobe",
+		DB: conn, DataDir: t.TempDir()}
 	srv := httptest.NewServer(s.Handler())
 	t.Cleanup(srv.Close)
 	return &fixture{srv: srv, s: s, logs: logs}
@@ -494,6 +496,91 @@ func TestPTZ(t *testing.T) {
 		t.Errorf("bad onvif_port = %d", code)
 	}
 	if code, _ := f.do(t, &http.Client{}, "POST", path, `{"action":"stop"}`); code != 401 {
+		t.Errorf("anonymous = %d", code)
+	}
+}
+
+func TestSegmentsAndFile(t *testing.T) {
+	f := newFixture(t)
+	admin := f.client(t, "admin", "admin-pass")
+	_, body := f.do(t, admin, "POST", "/api/v1/cameras", `{"name":"c","main_url":"rtsp://10.0.0.2/main"}`)
+	var c cameraOut
+	_ = json.Unmarshal([]byte(body), &c)
+
+	dir := filepath.Join(f.s.DataDir, "recordings", fmt.Sprint(c.ID), "2026-11-08")
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	data := []byte("0123456789abcdef") // stands in for an MP4
+	if err := os.WriteFile(filepath.Join(dir, "a.mp4"), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ins := func(path string, start, end int64) int64 {
+		res, err := f.s.DB.ExecContext(t.Context(), `INSERT INTO segments (camera_id, path, start_ts, end_ts, size_bytes) VALUES (?, ?, ?, ?, 16)`, c.ID, path, start, end)
+		if err != nil {
+			t.Fatal(err)
+		}
+		id, _ := res.LastInsertId()
+		return id
+	}
+	a := ins(fmt.Sprintf("recordings/%d/2026-11-08/a.mp4", c.ID), 1000, 2000)
+	ins(fmt.Sprintf("recordings/%d/2026-11-08/b.mp4", c.ID), 2000, 3000) // file gone
+	evil := ins("recordings/../../etc/passwd", 5000, 6000)
+
+	viewer := f.client(t, "viewer", "viewer-pass")
+	list := func(q string) (int, []segmentOut) {
+		code, body := f.do(t, viewer, "GET", fmt.Sprintf("/api/v1/cameras/%d/segments?%s", c.ID, q), "")
+		var out []segmentOut
+		_ = json.Unmarshal([]byte(body), &out)
+		return code, out
+	}
+	if code, out := list("from=1500&to=2500"); code != 200 || len(out) != 2 || out[0].ID != a || out[0].Start != 1000 {
+		t.Errorf("overlap = %d %+v", code, out)
+	}
+	if code, out := list("from=2000&to=2001"); code != 200 || len(out) != 1 {
+		t.Errorf("end is exclusive: %d %+v", code, out)
+	}
+	if code, out := list("from=10000&to=20000"); code != 200 || out == nil || len(out) != 0 {
+		t.Errorf("empty range must be [] = %d %v", code, out)
+	}
+	for _, q := range []string{"from=2&to=1", "from=x&to=1", "to=5", fmt.Sprintf("from=0&to=%d", (49 * time.Hour).Milliseconds())} {
+		if code, _ := list(q); code != 422 {
+			t.Errorf("%s = %d", q, code)
+		}
+	}
+	if code, _ := f.do(t, viewer, "GET", "/api/v1/cameras/999/segments?from=0&to=1", ""); code != 404 {
+		t.Errorf("unknown camera = %d", code)
+	}
+
+	file := func(id int64, hdr ...string) (int, string, http.Header) {
+		req, _ := http.NewRequestWithContext(t.Context(), "GET", fmt.Sprintf("%s/api/v1/segments/%d/file", f.srv.URL, id), nil)
+		for i := 0; i+1 < len(hdr); i += 2 {
+			req.Header.Set(hdr[i], hdr[i+1])
+		}
+		resp, err := viewer.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close() //nolint:errcheck // test
+		b, _ := io.ReadAll(resp.Body)
+		return resp.StatusCode, string(b), resp.Header
+	}
+	if code, body, h := file(a); code != 200 || body != string(data) || h.Get("Content-Type") != "video/mp4" || h.Get("Accept-Ranges") != "bytes" {
+		t.Errorf("file = %d %q %v", code, body, h)
+	}
+	if code, body, h := file(a, "Range", "bytes=4-7"); code != 206 || body != "4567" || h.Get("Content-Range") != "bytes 4-7/16" {
+		t.Errorf("range = %d %q %v", code, body, h)
+	}
+	if code, _, _ := file(a + 1); code != 404 {
+		t.Errorf("missing file = %d", code)
+	}
+	if code, body, _ := file(evil); code != 404 || strings.Contains(body, "root:") {
+		t.Errorf("path outside recordings = %d %q", code, body)
+	}
+	if code, _, _ := file(9999); code != 404 {
+		t.Errorf("unknown segment = %d", code)
+	}
+	if code, _ := f.do(t, &http.Client{}, "GET", fmt.Sprintf("/api/v1/segments/%d/file", a), ""); code != 401 {
 		t.Errorf("anonymous = %d", code)
 	}
 }
