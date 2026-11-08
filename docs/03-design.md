@@ -83,7 +83,6 @@ Video selalu di-copy. Audio (bila `record_audio`) di-encode ke AAC karena kamera
 | GET | `/cameras/{id}/snapshot` | JPEG terbaru |
 | GET | `/cameras/{id}/segments?from=&to=` | data timeline |
 | GET | `/segments/{id}/file` | stream MP4 dengan HTTP Range |
-| GET | `/cameras/{id}/clip?from=&to=` | export klip MP4 (concat, copy) |
 | GET | `/cameras/{id}/clip?from=&to=` | gabung segmen via concat demuxer (copy) |
 | GET | `/events?camera=&from=&to=&type=` | daftar event |
 | GET / POST / PATCH | `/notifiers` | konfigurasi notifikasi |
