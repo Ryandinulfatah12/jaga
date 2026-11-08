@@ -78,7 +78,7 @@ Argumen dibangun sebagai slice oleh `internal/recorder` (`recorder.Build`) dan d
 | GET / POST | `/cameras` | list & tambah kamera |
 | GET / PATCH / DELETE | `/cameras/{id}` | detail, ubah, hapus |
 | POST | `/cameras/{id}/test` | probe RTSP via ffprobe |
-| GET | `/cameras/{id}/status` | state supervisor, fps, bitrate, uptime |
+| GET | `/cameras/{id}/status` | state recorder (`idle`, `starting`, `recording`, `retrying`, `offline`), sejak kapan, error terakhir |
 | GET | `/cameras/{id}/snapshot` | JPEG terbaru |
 | GET | `/cameras/{id}/segments?from=&to=` | data timeline |
 | GET | `/segments/{id}/file` | stream MP4 dengan HTTP Range |
@@ -86,10 +86,10 @@ Argumen dibangun sebagai slice oleh `internal/recorder` (`recorder.Build`) dan d
 | GET | `/events?camera=&from=&to=&type=` | daftar event |
 | GET / POST / PATCH | `/notifiers` | konfigurasi notifikasi |
 | GET | `/system` | CPU, RAM, disk, versi |
-| GET | `/ws` | WebSocket push status kamera & event realtime |
+| GET | `/events/stream` | Server-Sent Events: `snapshot` semua kamera saat tersambung, lalu `status` per perubahan; `: ping` tiap 25 s |
 | ANY | `/live/*` | reverse proxy ke go2rtc (WebRTC/MSE), dicek sesi |
 
-Sudah ada: `/auth/*`, `/cameras` (GET/POST), `/cameras/{id}` (GET/PATCH/DELETE), `/cameras/{id}/test`, `/cameras/{id}/snapshot` (502 bila kamera tidak terjangkau), `/live/*`. Role `viewer` hanya boleh GET; tulis dan test kamera khusus `admin`. URL kamera di response selalu dimasking (`rtsp://***@host/...`). Error berbentuk `{"error": "..."}`.
+Sudah ada: `/auth/*`, `/cameras` (GET/POST), `/cameras/{id}` (GET/PATCH/DELETE), `/cameras/{id}/test`, `/cameras/{id}/snapshot` (502 bila kamera tidak terjangkau), `/cameras/{id}/status`, `/events/stream`, `/live/*`. Perubahan kamera lewat API langsung diterapkan ke recorder (start/stop/restart hanya kamera yang berubah; rename tidak me-restart) dan ke go2rtc. Role `viewer` hanya boleh GET; tulis dan test kamera khusus `admin`. URL kamera di response selalu dimasking (`rtsp://***@host/...`). Error berbentuk `{"error": "..."}`.
 
 ### Keamanan
 

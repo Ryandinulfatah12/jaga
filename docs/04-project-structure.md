@@ -17,7 +17,7 @@ jaga/
     live/                    # pengelola go2rtc (config, proses, proxy)
     notify/                  # telegram.go, webhook.go
     api/                     # router (chi), handler, middleware auth
-    ws/                      # hub WebSocket
+    status/                  # status recorder per kamera + fan-out ke SSE
     ui/term/                 # palet & simbol output CLI (lipgloss)
     licenses/                # embed THIRD_PARTY_LICENSES untuk About & `jaga version --licenses`
   web/                       # frontend Svelte + Vite (tokens dari docs/brand/tokens.css)

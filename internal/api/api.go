@@ -21,6 +21,7 @@ import (
 	"github.com/ryandinulfatah12/jaga/internal/camera"
 	"github.com/ryandinulfatah12/jaga/internal/live"
 	"github.com/ryandinulfatah12/jaga/internal/probe"
+	"github.com/ryandinulfatah12/jaga/internal/status"
 )
 
 // CookieName holds the session token.
@@ -43,8 +44,10 @@ type Server struct {
 	// Live proxies /live/* to go2rtc; nil disables live view and snapshots.
 	Live *live.Proxy
 	// CamerasChanged is called after a camera is created, changed or
-	// deleted, so live view can pick up the change. Optional.
+	// deleted, so recording and live view pick up the change. Optional.
 	CamerasChanged func()
+	// Status is the recorder state of every camera; nil means an empty hub.
+	Status *status.Hub
 
 	// Limit is the login rate limit; nil means 5 per minute per IP.
 	Limit *auth.Limiter
@@ -62,6 +65,9 @@ func (s *Server) Handler() http.Handler {
 	if s.probe == nil {
 		s.probe = probe.Probe
 	}
+	if s.Status == nil {
+		s.Status = status.NewHub()
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/v1/auth/login", s.login)
 	mux.HandleFunc("POST /api/v1/auth/logout", s.logout)
@@ -76,6 +82,8 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("DELETE /api/v1/cameras/{id}", admin(s.deleteCamera))
 	mux.Handle("POST /api/v1/cameras/{id}/test", admin(s.testCamera))
 	mux.Handle("GET /api/v1/cameras/{id}/snapshot", user(s.snapshot))
+	mux.Handle("GET /api/v1/cameras/{id}/status", user(s.cameraStatus))
+	mux.Handle("GET /api/v1/events/stream", user(s.eventStream))
 	if s.Live != nil {
 		mux.Handle("/live/", user(s.Live.ServeHTTP))
 	}

@@ -32,6 +32,7 @@ import (
 	"github.com/ryandinulfatah12/jaga/internal/probe"
 	"github.com/ryandinulfatah12/jaga/internal/recorder"
 	"github.com/ryandinulfatah12/jaga/internal/retention"
+	"github.com/ryandinulfatah12/jaga/internal/status"
 	"github.com/ryandinulfatah12/jaga/internal/supervisor"
 	"github.com/ryandinulfatah12/jaga/internal/version"
 	"github.com/ryandinulfatah12/jaga/migrations"
@@ -279,13 +280,14 @@ func (e *env) start() int {
 		e.log.Error("load cameras", "err", err)
 		return exitError
 	}
-	var rec []camera.Camera
+	rec := 0
 	for _, c := range all {
 		if c.Enabled && c.RecordMode == camera.RecordContinuous {
-			rec = append(rec, c)
+			rec++
 		}
 	}
-	sup := &supervisor.Supervisor{FFmpegPath: ffmpeg, DataDir: cfg.DataDir, DB: conn, Log: e.log}
+	hub := status.NewHub()
+	sup := &supervisor.Supervisor{FFmpegPath: ffmpeg, DataDir: cfg.DataDir, DB: conn, Log: e.log, Status: hub}
 	ret := &retention.Job{
 		DB: conn, DataDir: cfg.DataDir, Log: e.log,
 		DefaultDays:  cfg.Storage.DefaultRetentionDays,
@@ -302,11 +304,11 @@ func (e *env) start() int {
 		return exitError
 	}
 	lv := e.liveView(cfg, all)
-	apiSrv := &api.Server{Auth: users, Cameras: cams, Log: e.log, FFprobe: recorder.FFprobePath(ffmpeg)}
+	apiSrv := &api.Server{Auth: users, Cameras: cams, Log: e.log, FFprobe: recorder.FFprobePath(ffmpeg), Status: hub}
 	if lv != nil {
 		apiSrv.Live = lv.proxy
-		apiSrv.CamerasChanged = lv.changed(e.ctx, cams)
 	}
+	apiSrv.CamerasChanged = camerasChanged(e.ctx, e.log, cams, sup, lv)
 	srv := &http.Server{
 		Handler:           apiSrv.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
@@ -314,7 +316,7 @@ func (e *env) start() int {
 	}
 
 	e.log.Info("ready", "version", version.Version, "data_dir", cfg.DataDir, "listen", ln.Addr().String(),
-		"cameras", len(all), "recording", len(rec))
+		"cameras", len(all), "recording", rec)
 	var wg sync.WaitGroup
 	wg.Go(func() { ret.Run(e.ctx) })
 	if lv != nil && lv.proc != nil {
@@ -331,7 +333,7 @@ func (e *env) start() int {
 		defer cancel()
 		_ = srv.Shutdown(sctx) // in-flight requests get 5 s
 	})
-	sup.Run(e.ctx, rec) // returns after ctx is cancelled and every recorder has stopped
+	sup.Run(e.ctx, all) // returns after ctx is cancelled and every recorder has stopped
 	wg.Wait()
 	e.log.Info("shutting down")
 	return exitOK
@@ -373,30 +375,56 @@ func (e *env) liveView(cfg config.Config, cams []camera.Camera) *liveState {
 	return lv
 }
 
-// changed rebuilds the go2rtc config from the store and hands it over.
-// The newest config wins if one is still pending.
-func (lv *liveState) changed(ctx context.Context, cams *camera.Store) func() {
+// camerasChanged returns the API's CamerasChanged hook: it reloads the
+// camera list into the recorders and live view. It returns at once and does
+// the work in the background, one reload at a time, so an API request never
+// waits for FFmpeg to close a segment. Changes made during a reload are
+// folded into one more reload.
+func camerasChanged(ctx context.Context, log *slog.Logger, cams *camera.Store, sup *supervisor.Supervisor, lv *liveState) func() {
+	kick := make(chan struct{}, 1)
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-kick:
+			}
+			all, err := cams.List(ctx)
+			if err != nil {
+				log.Error("camera reload", "err", err)
+				continue
+			}
+			if lv != nil {
+				lv.apply(all)
+			}
+			sup.Apply(all)
+		}
+	}()
 	return func() {
-		all, err := cams.List(ctx)
-		if err != nil {
-			lv.log.Error("live view reload", "err", err)
-			return
-		}
-		lc, err := live.BuildConfig(lv.cfg.Go2RTC.API, lv.cfg.Go2RTC.WebRTCPort, all)
-		if err != nil {
-			lv.log.Error("live view reload", "err", err)
-			return
-		}
-		lv.proxy.SetStreams(lc.Streams)
-		if lv.proc == nil {
-			return
-		}
 		select {
-		case <-lv.reload: // drop the stale pending config
-		default:
+		case kick <- struct{}{}:
+		default: // a reload is already pending and will read the latest list
 		}
-		lv.reload <- lc
 	}
+}
+
+// apply rebuilds the go2rtc config and hands it over. The newest config
+// wins if one is still pending.
+func (lv *liveState) apply(all []camera.Camera) {
+	lc, err := live.BuildConfig(lv.cfg.Go2RTC.API, lv.cfg.Go2RTC.WebRTCPort, all)
+	if err != nil {
+		lv.log.Error("live view reload", "err", err)
+		return
+	}
+	lv.proxy.SetStreams(lc.Streams)
+	if lv.proc == nil {
+		return
+	}
+	select {
+	case <-lv.reload: // drop the stale pending config
+	default:
+	}
+	lv.reload <- lc
 }
 
 // user adds a user or resets a password. The password is read from stdin,

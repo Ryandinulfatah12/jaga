@@ -159,10 +159,8 @@ func (s *Server) createCamera(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, out(c))
 }
 
-// patchCamera changes only the fields present in the body.
-// ponytail: live view reloads at once (CamerasChanged); the recorder picks
-// the change up on the next `jaga start`, supervisor reload comes with the
-// WebSocket status hub.
+// patchCamera changes only the fields present in the body. Recording and
+// live view pick the change up at once through CamerasChanged.
 func (s *Server) patchCamera(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(w, r)
 	if !ok {
