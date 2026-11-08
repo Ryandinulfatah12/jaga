@@ -6,6 +6,7 @@
   import Login from './pages/Login.svelte'
   import Live from './pages/Live.svelte'
   import Cameras from './pages/Cameras.svelte'
+  import Playback from './pages/Playback.svelte'
 
   let user = $state(null)
   let checked = $state(false)
@@ -45,6 +46,7 @@
 
   const nav = [
     { id: 'live', label: 'Live' },
+    { id: 'playback', label: 'Playback' },
     { id: 'cameras', label: 'Cameras' },
   ]
 </script>
@@ -87,6 +89,8 @@
     <main class="flex-1 p-3 sm:p-5">
       {#if page === 'cameras'}
         <Cameras {user} />
+      {:else if page === 'playback'}
+        <Playback />
       {:else}
         <Live {go} {user} />
       {/if}

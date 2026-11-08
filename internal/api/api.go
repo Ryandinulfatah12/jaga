@@ -8,6 +8,7 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -50,6 +51,9 @@ type Server struct {
 	Status *status.Hub
 	// UI serves the web UI at /; nil serves only the API.
 	UI http.Handler
+	// DB and DataDir serve recordings (timeline and segment files).
+	DB      *sql.DB
+	DataDir string
 
 	// Limit is the login rate limit; nil means 5 per minute per IP.
 	Limit *auth.Limiter
@@ -87,6 +91,8 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /api/v1/cameras/{id}/snapshot", user(s.snapshot))
 	mux.Handle("GET /api/v1/cameras/{id}/status", user(s.cameraStatus))
 	mux.Handle("POST /api/v1/cameras/{id}/ptz", user(s.ptz))
+	mux.Handle("GET /api/v1/cameras/{id}/segments", user(s.segments))
+	mux.Handle("GET /api/v1/segments/{id}/file", user(s.segmentFile))
 	mux.Handle("GET /api/v1/events/stream", user(s.eventStream))
 	if s.Live != nil {
 		mux.Handle("/live/", user(s.Live.ServeHTTP))

@@ -51,7 +51,7 @@ Estimasi total 7–10 minggu kerja part-time. Setiap fase menghasilkan sesuatu y
 - [x] Form tambah/edit kamera + tombol test koneksi
 - [x] Kontrol di tampilan full-size: snapshot resolusi penuh (download), suara on/off, pad pan & tilt (tahan, atau tombol panah)
 - [ ] Talk (audio dua arah) lewat WebRTC backchannel go2rtc, butuh HTTPS untuk mikrofon
-- [ ] Timeline playback: bar per jam, highlight segmen motion, seek via Range request
+- [x] Timeline playback: bar 24 jam per kamera per hari, highlight segmen motion, seek via Range request (`http.ServeContent`), lanjut otomatis ke segmen berikutnya, tombol panah ±1/10 menit, download segmen
 - [ ] Export klip (pilih rentang → download)
 - [ ] Halaman sistem: CPU, RAM, disk, status tiap kamera
 - [ ] Halaman About: versi + daftar lisensi open source (embed `THIRD_PARTY_LICENSES`)
