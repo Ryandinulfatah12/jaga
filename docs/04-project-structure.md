@@ -56,7 +56,7 @@ secret_key: ${JAGA_SECRET_KEY}   # enkripsi URL kamera
 - `network_mode: host` direkomendasikan agar RTSP/WebRTC tidak terkendala NAT Docker; alternatif: publish 8080 dan port WebRTC 8555 TCP/UDP.
 - Volume `/data` di disk terpisah (HDD surveillance), bukan di disk OS.
 - Healthcheck: cek TCP ke port `listen` (nanti `GET /api/v1/system`).
-- Kamera seperti Tapo C2xx hanya memberi video ke dua sesi RTSP sekaligus, apa pun stream-nya (dites di C211): recorder memakai satu, live view (grid, sub stream) satu. Sesi ketiga tersambung tetapi tidak pernah mendapat frame. Jadi tampilan full-size memakai sub stream untuk setiap kamera yang sedang merekam, baik `record_stream` main maupun sub. Relay lewat server RTSP go2rtc sengaja tidak dipakai: di go2rtc 1.9.15 username/password RTSP tidak ditegakkan untuk koneksi loopback, sehingga proses lain di host bisa mem-publish ke stream kamera dan rekaman bisa berisi video palsu.
+- Tampilan full-size memakai main stream, kecuali kamera sedang merekam main stream: lalu sub stream, karena kamera seperti Tapo C2xx bisa menolak sesi kedua ke stream yang sedang dipakai. Merekam sub (`record_stream=sub`) membebaskan main untuk live resolusi penuh; dites di C211: recorder `stream2` + live grid `stream2` + full-size `stream1` jalan bersamaan. Gejala layar hitam yang sempat dikira batas dua sesi ternyata karena NVR lain (Shinobi) masih memegang dua sesi ke kamera yang sama: matikan NVR lama sebelum memindah kamera ke Jaga.
 
 ```yaml
 services:
