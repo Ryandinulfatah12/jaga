@@ -17,6 +17,7 @@ import (
 
 	"github.com/ryandinulfatah12/jaga/internal/camera"
 	"github.com/ryandinulfatah12/jaga/internal/db"
+	"github.com/ryandinulfatah12/jaga/internal/status"
 	"github.com/ryandinulfatah12/jaga/migrations"
 )
 
@@ -491,4 +492,112 @@ func TestHelpers(t *testing.T) {
 	if d := csvDuration([]string{"a.mp4", "x"}); d != 0 {
 		t.Errorf("csvDuration short = %v", d)
 	}
+}
+
+// segmentsOf counts the indexed segments of one camera.
+func segmentsOf(t *testing.T, s *Supervisor, id int64) int {
+	t.Helper()
+	var n int
+	if err := s.DB.QueryRowContext(context.Background(), `SELECT count(*) FROM segments WHERE camera_id = ?`, id).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n
+}
+
+func TestApplyStartsStopsAndRestarts(t *testing.T) {
+	s, first, logs := setup(t, "record")
+	hub := status.NewHub()
+	s.Status = hub
+	updates, cancelSub := hub.Subscribe()
+	defer cancelSub()
+	store := camera.NewStore(s.DB, mustSealer(t))
+	second, err := store.Create(t.Context(), camera.New("Garasi", "rtsp://cam/garasi"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan struct{})
+	go func() { s.Run(ctx, []camera.Camera{first}); close(done) }()
+	waitFor(t, "first camera recording", func() bool { st, _ := hub.Get(first.ID); return st.State == status.Recording })
+	if _, ok := hub.Get(second.ID); ok {
+		t.Fatal("second camera has a status before Apply")
+	}
+
+	// Add the second camera; the first keeps its recorder (one run only).
+	s.Apply([]camera.Camera{first, second})
+	waitFor(t, "second camera recording", func() bool { st, _ := hub.Get(second.ID); return st.State == status.Recording })
+	waitFor(t, "second camera segments", func() bool { return segmentsOf(t, s, second.ID) >= 2 })
+
+	// A rename does not restart; a new URL does, after the old FFmpeg closed
+	// its segment (2 at start + 1 on SIGINT).
+	renamed := first
+	renamed.Name = "Depan baru"
+	s.Apply([]camera.Camera{renamed, second})
+	if st, _ := hub.Get(first.ID); st.State != status.Recording {
+		t.Errorf("rename restarted the recorder: %+v", st)
+	}
+	moved := renamed
+	moved.MainURL = "rtsp://cam/depan2"
+	restarted := time.Now()
+	s.Apply([]camera.Camera{moved, second})
+	if n := segmentsOf(t, s, first.ID); n != 3 {
+		t.Errorf("first camera segments after restart = %d, want 3 (closed on SIGINT)", n)
+	}
+	// The fake names segments by the second, so the new run may rewrite the
+	// same names; watch the status instead of the segment count.
+	waitFor(t, "first camera recording again", func() bool {
+		st, _ := hub.Get(first.ID)
+		return st.State == status.Recording && !st.Since.Before(restarted.Truncate(time.Second))
+	})
+
+	// Disabled and record_mode off both stop the recorder.
+	off := second
+	off.RecordMode = camera.RecordOff
+	s.Apply([]camera.Camera{moved, off})
+	if _, ok := hub.Get(second.ID); ok {
+		t.Error("record_mode off camera still has a status")
+	}
+	disabled := moved
+	disabled.Enabled = false
+	s.Apply([]camera.Camera{disabled, off})
+	if all := hub.All(); len(all) != 0 {
+		t.Errorf("statuses after disabling everything = %+v", all)
+	}
+
+	cancel()
+	<-done
+	s.Apply([]camera.Camera{first}) // after shutdown: no-op, no panic
+
+	var seen []string
+	for {
+		select {
+		case u := <-updates:
+			seen = append(seen, fmt.Sprintf("%d:%s", u.CameraID, u.State))
+			continue
+		default:
+		}
+		break
+	}
+	got := strings.Join(seen, " ")
+	for _, want := range []string{"1:starting 1:recording", "2:starting 2:recording", "1:stopped 1:starting 1:recording", "2:stopped"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("status updates %q lack %q\n%s", got, want, logs)
+		}
+	}
+	if strings.Count(got, "1:stopped") != 2 {
+		t.Errorf("camera 1 stopped %d times, want 2 (URL change, disable): %s", strings.Count(got, "1:stopped"), got)
+	}
+}
+
+func TestStatusRetryingThenOffline(t *testing.T) {
+	s, c, _ := setup(t, "fail")
+	hub := status.NewHub()
+	s.Status = hub
+	stop := start(t, s, c)
+	waitFor(t, "offline status", func() bool { st, _ := hub.Get(c.ID); return st.State == status.Offline })
+	st, _ := hub.Get(c.ID)
+	if st.Failures < offlineAfter || !strings.Contains(st.Error, "Connection refused") || strings.Contains(st.Error, "hunter2") {
+		t.Errorf("offline status = %+v", st)
+	}
+	stop()
 }

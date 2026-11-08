@@ -45,5 +45,5 @@ Supervisor juga men-spawn FFmpeg motion dan go2rtc (panahnya tidak digambar agar
 1. **Recording**: kamera (main) → FFmpeg recorder `-c copy` → file MP4 per segmen → nama file dikirim lewat stdout ke Supervisor → baris `segments` di SQLite.
 2. **Live view**: browser → API (cek sesi) → reverse proxy → go2rtc → kamera. WebRTC/MSE, tanpa transcode.
 3. **Playback**: browser minta `/segments?from=&to=` → timeline → putar file MP4 via HTTP Range; export klip memakai concat demuxer (copy).
-4. **Motion**: ONVIF event atau frame diff sub-stream → debounce → baris `events` + snapshot → notifikasi Telegram/webhook → push WebSocket ke browser.
+4. **Motion**: ONVIF event atau frame diff sub-stream → debounce → baris `events` + snapshot → notifikasi Telegram/webhook → push SSE (`/events/stream`) ke browser.
 5. **Retensi**: job periodik menghapus folder tanggal lama dan segmen tertua saat kuota disk terlampaui.

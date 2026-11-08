@@ -23,6 +23,7 @@ import (
 
 	"github.com/ryandinulfatah12/jaga/internal/camera"
 	"github.com/ryandinulfatah12/jaga/internal/recorder"
+	"github.com/ryandinulfatah12/jaga/internal/status"
 )
 
 // segmentName is the file name FFmpeg reports in the segment list, the base
@@ -54,24 +55,111 @@ type Supervisor struct {
 	// before SIGKILL (5 s by default). Keep the service manager's stop
 	// timeout above it (Docker stop_grace_period, systemd TimeoutStopSec).
 	StopTimeout time.Duration
+
+	// Status receives every recorder state change. Optional.
+	Status *status.Hub
+
+	mu      sync.Mutex
+	running map[int64]*recorderRun // by camera id
+	wg      sync.WaitGroup
+	ctx     context.Context
+}
+
+// recorderRun is one camera's recorder goroutine.
+type recorderRun struct {
+	cam  camera.Camera // as it was started; a different value means restart
+	stop context.CancelFunc
+	done chan struct{}
 }
 
 // offlineAfter is the number of consecutive failures that opens an offline event.
 const offlineAfter = 3
 
-// Run records every camera until ctx is cancelled, then stops all recorders
-// at once (SIGINT, SIGKILL after StopTimeout) and returns when every last
-// segment is closed and indexed.
+// Run records the cameras that should record (enabled, record_mode
+// continuous) until ctx is cancelled, then stops all recorders at once
+// (SIGINT, SIGKILL after StopTimeout) and returns when every last segment is
+// closed and indexed. Apply changes the set while it runs.
 func (s *Supervisor) Run(ctx context.Context, cams []camera.Camera) {
-	var wg sync.WaitGroup
-	for _, c := range cams {
-		wg.Go(func() { s.runCamera(ctx, c) })
-	}
+	s.mu.Lock()
+	s.ctx = ctx
+	s.running = map[int64]*recorderRun{}
+	s.mu.Unlock()
+	s.Apply(cams)
 	<-ctx.Done()
 	began := time.Now()
-	s.log().Info("stopping recorders", "cameras", len(cams))
-	wg.Wait()
+	s.mu.Lock()
+	n := len(s.running)
+	s.mu.Unlock()
+	s.log().Info("stopping recorders", "cameras", n)
+	s.wg.Wait()
 	s.log().Info("recorders stopped", "took", time.Since(began).Round(time.Millisecond))
+}
+
+// Apply makes the running recorders match cams, the full camera list:
+// cameras that should record and are not get started, those that should not
+// (deleted, disabled, record_mode off) get stopped, and those whose settings
+// changed get restarted. Unchanged recorders keep running. It returns once
+// stopped recorders have closed their last segment. Safe to call
+// concurrently with itself; a no-op before Run or after shutdown.
+func (s *Supervisor) Apply(cams []camera.Camera) {
+	s.mu.Lock()
+	if s.ctx == nil || s.ctx.Err() != nil {
+		s.mu.Unlock()
+		return
+	}
+	want := map[int64]camera.Camera{}
+	for _, c := range cams {
+		if c.Enabled && c.RecordMode == camera.RecordContinuous {
+			want[c.ID] = c
+		}
+	}
+	var stopping []*recorderRun
+	for id, r := range s.running {
+		if c, ok := want[id]; !ok || !sameRecording(r.cam, c) {
+			r.stop()
+			stopping = append(stopping, r)
+			delete(s.running, id)
+		}
+	}
+	s.mu.Unlock()
+	// Wait outside the lock: stopping takes up to StopTimeout, and a
+	// restarted camera must not write a segment while the old FFmpeg still
+	// closes its own.
+	for _, r := range stopping {
+		<-r.done
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.ctx.Err() != nil {
+		return
+	}
+	for id, c := range want {
+		if _, ok := s.running[id]; ok {
+			continue
+		}
+		ctx, stop := context.WithCancel(s.ctx)
+		r := &recorderRun{cam: c, stop: stop, done: make(chan struct{})}
+		s.running[id] = r
+		s.wg.Go(func() {
+			defer close(r.done)
+			defer stop()
+			s.runCamera(ctx, c)
+			s.setStatus(status.Status{CameraID: c.ID, State: status.Stopped})
+		})
+	}
+}
+
+// sameRecording reports whether a and b record the same way, so a change
+// to b (a rename, the retention days) needs no restart.
+func sameRecording(a, b camera.Camera) bool {
+	return a.MainURL == b.MainURL && a.RecordAudio == b.RecordAudio && a.SegmentSec == b.SegmentSec
+}
+
+func (s *Supervisor) setStatus(st status.Status) {
+	if s.Status != nil {
+		s.Status.Set(st)
+	}
 }
 
 func (s *Supervisor) runCamera(ctx context.Context, c camera.Camera) {
@@ -107,6 +195,7 @@ func (s *Supervisor) runCamera(ctx context.Context, c camera.Camera) {
 		offlineSince time.Time
 	)
 	onRunning := func() {
+		s.setStatus(status.Status{CameraID: c.ID, State: status.Recording})
 		log.Info("recording")
 		if offlineID != 0 {
 			s.closeOffline(ctx, log, c.ID, offlineID, time.Now())
@@ -117,6 +206,9 @@ func (s *Supervisor) runCamera(ctx context.Context, c camera.Camera) {
 
 	for {
 		log.Debug("starting recorder")
+		if offlineID == 0 {
+			s.setStatus(status.Status{CameraID: c.ID, State: status.Starting, Failures: failures})
+		}
 		res := s.record(ctx, c, cmd, log, onRunning)
 		if ctx.Err() != nil {
 			log.Info("recorder stopped")
@@ -135,6 +227,11 @@ func (s *Supervisor) runCamera(ctx context.Context, c camera.Camera) {
 			offlineSince = time.Now()
 			offlineID = s.openOffline(ctx, log, c.ID, offlineSince, res.err)
 		}
+		st := status.Retrying
+		if offlineID != 0 {
+			st = status.Offline
+		}
+		s.setStatus(status.Status{CameraID: c.ID, State: st, Error: res.err.Error(), Failures: failures})
 		select {
 		case <-ctx.Done():
 			return

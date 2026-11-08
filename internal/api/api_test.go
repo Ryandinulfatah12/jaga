@@ -4,6 +4,7 @@
 package api
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -22,6 +23,7 @@ import (
 	"github.com/ryandinulfatah12/jaga/internal/db"
 	"github.com/ryandinulfatah12/jaga/internal/live"
 	"github.com/ryandinulfatah12/jaga/internal/probe"
+	"github.com/ryandinulfatah12/jaga/internal/status"
 	"github.com/ryandinulfatah12/jaga/migrations"
 )
 
@@ -359,4 +361,81 @@ func TestLiveAndSnapshot(t *testing.T) {
 	if strings.Join(hits, " ") != strings.Join(want, " ") {
 		t.Errorf("go2rtc saw %v, want %v", hits, want)
 	}
+}
+
+func TestStatusAndEventStream(t *testing.T) {
+	f := newFixture(t)
+	viewer := f.client(t, "viewer", "viewer-pass") // viewers may watch status
+	owner := f.client(t, "admin", "admin-pass")
+	_, body := f.do(t, owner, "POST", "/api/v1/cameras", `{"name":"a","main_url":"rtsp://u:pw@10.0.0.2/main"}`)
+	var cam cameraOut
+	_ = json.Unmarshal([]byte(body), &cam)
+	path := fmt.Sprintf("/api/v1/cameras/%d/status", cam.ID)
+
+	if code, body := f.do(t, viewer, "GET", path, ""); code != 200 || !strings.Contains(body, `"state":"idle"`) || strings.Contains(body, "since") {
+		t.Errorf("status before recording = %d %s", code, body)
+	}
+	if code, _ := f.do(t, viewer, "GET", "/api/v1/cameras/999/status", ""); code != 404 {
+		t.Errorf("unknown camera status = %d", code)
+	}
+	f.s.Status.Set(status.Status{CameraID: cam.ID, State: status.Recording})
+	if _, body := f.do(t, viewer, "GET", path, ""); !strings.Contains(body, `"state":"recording"`) {
+		t.Errorf("status = %s", body)
+	}
+	if code, _ := f.do(t, f.client(t, "", ""), "GET", "/api/v1/events/stream", ""); code != 401 {
+		t.Errorf("anon stream = %d", code)
+	}
+
+	heartbeat = 50 * time.Millisecond
+	t.Cleanup(func() { heartbeat = 25 * time.Second })
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, "GET", f.srv.URL+"/api/v1/events/stream", nil)
+	resp, err := viewer.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != 200 || resp.Header.Get("Content-Type") != "text/event-stream" {
+		t.Fatalf("stream = %d %q", resp.StatusCode, resp.Header.Get("Content-Type"))
+	}
+	lines := make(chan string, 64)
+	go func() {
+		sc := bufio.NewScanner(resp.Body)
+		for sc.Scan() {
+			lines <- sc.Text()
+		}
+		close(lines)
+	}()
+	next := func(prefix string) string {
+		t.Helper()
+		for {
+			select {
+			case l, ok := <-lines:
+				if !ok {
+					t.Fatalf("stream closed waiting for %q", prefix)
+				}
+				if strings.HasPrefix(l, prefix) {
+					return l
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatalf("timed out waiting for %q", prefix)
+			}
+		}
+	}
+	next("event: snapshot")
+	if l := next("data: "); !strings.Contains(l, `"state":"recording"`) || !strings.Contains(l, fmt.Sprintf(`"camera_id":%d`, cam.ID)) {
+		t.Errorf("snapshot = %s", l)
+	}
+	f.s.Status.Set(status.Status{CameraID: cam.ID, State: status.Retrying, Error: "rtsp://***@10.0.0.2/main: refused"})
+	next("event: status")
+	if l := next("data: "); !strings.Contains(l, `"state":"retrying"`) {
+		t.Errorf("update = %s", l)
+	}
+	f.s.Status.Set(status.Status{CameraID: cam.ID, State: status.Stopped})
+	next("event: status")
+	if l := next("data: "); !strings.Contains(l, `"state":"idle"`) {
+		t.Errorf("stopped shown as %s, want idle", l)
+	}
+	next(": ping")
 }

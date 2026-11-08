@@ -80,7 +80,7 @@ Supervisor juga men-spawn FFmpeg motion dan go2rtc (panahnya tidak digambar agar
 1. **Recording**: kamera (main) → FFmpeg recorder `-c copy` → file MP4 per segmen → nama file dikirim lewat stdout ke Supervisor → baris `segments` di SQLite.
 2. **Live view**: browser → API (cek sesi) → reverse proxy → go2rtc → kamera. WebRTC/MSE, tanpa transcode.
 3. **Playback**: browser minta `/segments?from=&to=` → timeline → putar file MP4 via HTTP Range; export klip memakai concat demuxer (copy).
-4. **Motion**: ONVIF event atau frame diff sub-stream → debounce → baris `events` + snapshot → notifikasi Telegram/webhook → push WebSocket ke browser.
+4. **Motion**: ONVIF event atau frame diff sub-stream → debounce → baris `events` + snapshot → notifikasi Telegram/webhook → push SSE (`/events/stream`) ke browser.
 5. **Retensi**: job periodik menghapus folder tanggal lama dan segmen tertua saat kuota disk terlampaui.
 
 ## Desain detail
@@ -163,7 +163,7 @@ Argumen dibangun sebagai slice oleh `internal/recorder` (`recorder.Build`) dan d
 | GET / POST | `/cameras` | list & tambah kamera |
 | GET / PATCH / DELETE | `/cameras/{id}` | detail, ubah, hapus |
 | POST | `/cameras/{id}/test` | probe RTSP via ffprobe |
-| GET | `/cameras/{id}/status` | state supervisor, fps, bitrate, uptime |
+| GET | `/cameras/{id}/status` | state recorder (`idle`, `starting`, `recording`, `retrying`, `offline`), sejak kapan, error terakhir |
 | GET | `/cameras/{id}/snapshot` | JPEG terbaru |
 | GET | `/cameras/{id}/segments?from=&to=` | data timeline |
 | GET | `/segments/{id}/file` | stream MP4 dengan HTTP Range |
@@ -171,10 +171,10 @@ Argumen dibangun sebagai slice oleh `internal/recorder` (`recorder.Build`) dan d
 | GET | `/events?camera=&from=&to=&type=` | daftar event |
 | GET / POST / PATCH | `/notifiers` | konfigurasi notifikasi |
 | GET | `/system` | CPU, RAM, disk, versi |
-| GET | `/ws` | WebSocket push status kamera & event realtime |
+| GET | `/events/stream` | Server-Sent Events: `snapshot` semua kamera saat tersambung, lalu `status` per perubahan; `: ping` tiap 25 s |
 | ANY | `/live/*` | reverse proxy ke go2rtc (WebRTC/MSE), dicek sesi |
 
-Sudah ada: `/auth/*`, `/cameras` (GET/POST), `/cameras/{id}` (GET/PATCH/DELETE), `/cameras/{id}/test`, `/cameras/{id}/snapshot` (502 bila kamera tidak terjangkau), `/live/*`. Role `viewer` hanya boleh GET; tulis dan test kamera khusus `admin`. URL kamera di response selalu dimasking (`rtsp://***@host/...`). Error berbentuk `{"error": "..."}`.
+Sudah ada: `/auth/*`, `/cameras` (GET/POST), `/cameras/{id}` (GET/PATCH/DELETE), `/cameras/{id}/test`, `/cameras/{id}/snapshot` (502 bila kamera tidak terjangkau), `/cameras/{id}/status`, `/events/stream`, `/live/*`. Perubahan kamera lewat API langsung diterapkan ke recorder (start/stop/restart hanya kamera yang berubah; rename tidak me-restart) dan ke go2rtc. Role `viewer` hanya boleh GET; tulis dan test kamera khusus `admin`. URL kamera di response selalu dimasking (`rtsp://***@host/...`). Error berbentuk `{"error": "..."}`.
 
 ### Keamanan
 
@@ -216,7 +216,7 @@ jaga/
     live/                    # pengelola go2rtc (config, proses, proxy)
     notify/                  # telegram.go, webhook.go
     api/                     # router (chi), handler, middleware auth
-    ws/                      # hub WebSocket
+    status/                  # status recorder per kamera + fan-out ke SSE
     ui/term/                 # palet & simbol output CLI (lipgloss)
     licenses/                # embed THIRD_PARTY_LICENSES untuk About & `jaga version --licenses`
   web/                       # frontend Svelte + Vite (tokens dari docs/brand/tokens.css)
@@ -311,7 +311,7 @@ Estimasi total 7–10 minggu kerja part-time. Setiap fase menghasilkan sesuatu y
 - [x] Integrasi go2rtc: generate config lewat YAML marshaller, API hanya `127.0.0.1`, RTSP server go2rtc mati, reload saat berubah (URL kamera lewat env `JAGA_CAM_n`, tidak ditulis ke file)
 - [x] Reverse proxy `/live/*` dengan cek sesi + whitelist path & nama stream (test: `/live/api/config` harus 403)
 - [x] Snapshot terbaru per kamera (ambil dari go2rtc `frame.jpeg`, sub-stream bila ada)
-- [ ] Hub WebSocket untuk status kamera realtime
+- [x] Status kamera realtime lewat SSE `GET /api/v1/events/stream` (stdlib, tanpa dependency WebSocket), plus reload recorder tanpa restart saat kamera berubah
 
 ### Fase 3 — Frontend (±2 minggu)
 

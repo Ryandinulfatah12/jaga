@@ -41,7 +41,7 @@ Estimasi total 7–10 minggu kerja part-time. Setiap fase menghasilkan sesuatu y
 - [x] Integrasi go2rtc: generate config lewat YAML marshaller, API hanya `127.0.0.1`, RTSP server go2rtc mati, reload saat berubah (URL kamera lewat env `JAGA_CAM_n`, tidak ditulis ke file)
 - [x] Reverse proxy `/live/*` dengan cek sesi + whitelist path & nama stream (test: `/live/api/config` harus 403)
 - [x] Snapshot terbaru per kamera (ambil dari go2rtc `frame.jpeg`, sub-stream bila ada)
-- [ ] Hub WebSocket untuk status kamera realtime
+- [x] Status kamera realtime lewat SSE `GET /api/v1/events/stream` (stdlib, tanpa dependency WebSocket), plus reload recorder tanpa restart saat kamera berubah
 
 ### Fase 3 — Frontend (±2 minggu)
 
