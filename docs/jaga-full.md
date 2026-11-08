@@ -19,7 +19,7 @@ Versi: 6 November 2026
 
 ### Non-goals (versi awal)
 
-- Transcoding, PTZ control, rekaman audio dua arah
+- Transcoding, rekaman audio dua arah (PTZ dasar via ONVIF sudah ada sejak Fase 3)
 - Object detection AI (direncanakan sebagai plugin fase akhir)
 - Cluster multi-node dan cloud storage
 
@@ -91,7 +91,7 @@ Supervisor juga men-spawn FFmpeg motion dan go2rtc (panahnya tidak digambar agar
 | --- | --- | --- |
 | `users` | id, username, password\_hash (argon2id), role, created\_at | role: `admin` / `viewer` |
 | `sessions` | token\_hash, user\_id, expires\_at | cookie HttpOnly, rotasi tiap login |
-| `cameras` | id, name, main\_url, sub\_url, enabled, record\_mode, record\_audio, segment\_sec, retention\_days, motion\_mode, motion\_config (JSON), created\_at | URL RTSP disimpan terenkripsi (AES-GCM, key dari env); `record_audio` default 0 |
+| `cameras` | id, name, main\_url, sub\_url, enabled, record\_mode, record\_audio, segment\_sec, retention\_days, motion\_mode, motion\_config (JSON), onvif\_port, created\_at | URL RTSP disimpan terenkripsi (AES-GCM, key dari env); `record_audio` default 0; `onvif_port` NULL = tanpa PTZ, host & akun ONVIF diambil dari `main_url` |
 | `segments` | id, camera\_id, path, start\_ts, end\_ts, size\_bytes, has\_motion | index (camera\_id, start\_ts) untuk timeline |
 | `events` | id, camera\_id, type, start\_ts, end\_ts, score, snapshot\_path, meta (JSON) | type: `motion`, `offline`, `online`, `disk_full` |
 | `notifiers` | id, kind, config (JSON), enabled | kind: `telegram`, `webhook` |
@@ -164,6 +164,7 @@ Argumen dibangun sebagai slice oleh `internal/recorder` (`recorder.Build`) dan d
 | GET / PATCH / DELETE | `/cameras/{id}` | detail, ubah, hapus |
 | POST | `/cameras/{id}/test` | probe RTSP via ffprobe |
 | GET | `/cameras/{id}/status` | state recorder (`idle`, `starting`, `recording`, `retrying`, `offline`), sejak kapan, error terakhir |
+| POST | `/cameras/{id}/ptz` | `{"action":"move","pan":-1..1,"tilt":-1..1,"zoom":-1..1}` atau `{"action":"stop"}`; 204, 422 bila kamera tanpa `onvif_port`, 502 bila kamera menolak (pesan dari kamera, tanpa URL) |
 | GET | `/cameras/{id}/snapshot` | JPEG terbaru |
 | GET | `/cameras/{id}/segments?from=&to=` | data timeline |
 | GET | `/segments/{id}/file` | stream MP4 dengan HTTP Range |
@@ -174,7 +175,7 @@ Argumen dibangun sebagai slice oleh `internal/recorder` (`recorder.Build`) dan d
 | GET | `/events/stream` | Server-Sent Events: `snapshot` semua kamera saat tersambung, lalu `status` per perubahan; `: ping` tiap 25 s |
 | ANY | `/live/*` | reverse proxy ke go2rtc (WebRTC/MSE), dicek sesi |
 
-Sudah ada: `/auth/*`, `/cameras` (GET/POST), `/cameras/{id}` (GET/PATCH/DELETE), `/cameras/{id}/test`, `/cameras/{id}/snapshot` (502 bila kamera tidak terjangkau), `/cameras/{id}/status`, `/events/stream`, `/live/*`. Perubahan kamera lewat API langsung diterapkan ke recorder (start/stop/restart hanya kamera yang berubah; rename tidak me-restart) dan ke go2rtc. Role `viewer` hanya boleh GET; tulis dan test kamera khusus `admin`. URL kamera di response selalu dimasking (`rtsp://***@host/...`). Error berbentuk `{"error": "..."}`.
+Sudah ada: `/auth/*`, `/cameras` (GET/POST), `/cameras/{id}` (GET/PATCH/DELETE), `/cameras/{id}/test`, `/cameras/{id}/snapshot` (502 bila kamera tidak terjangkau; `?stream=main` resolusi penuh, `?download=1` dengan nama file), `/cameras/{id}/status`, `/events/stream`, `/live/*`. Perubahan kamera lewat API langsung diterapkan ke recorder (start/stop/restart hanya kamera yang berubah; rename tidak me-restart) dan ke go2rtc. Role `viewer` hanya boleh GET, ditambah `POST /cameras/{id}/ptz` (hanya mengarahkan kamera, tidak mengubah setting); tulis dan test kamera khusus `admin`. PTZ: tiap `move` diberi timeout 1 s di kamera dan UI mengulangnya selama tombol ditahan, jadi tab yang tertutup tidak membuat kamera terus berputar. URL kamera di response selalu dimasking (`rtsp://***@host/...`). Error berbentuk `{"error": "..."}`.
 
 ### Keamanan
 
@@ -319,6 +320,8 @@ Estimasi total 7–10 minggu kerja part-time. Setiap fase menghasilkan sesuatu y
 - [x] Halaman login & layout dasar (dark default, toggle light)
 - [x] Grid live 1/4/9/16 dengan sub-stream, klik untuk fullscreen main-stream (MSE lewat WebSocket go2rtc, status realtime dari SSE)
 - [x] Form tambah/edit kamera + tombol test koneksi
+- [x] Kontrol di tampilan full-size: snapshot resolusi penuh (download), suara on/off, pad pan & tilt (tahan, atau tombol panah)
+- [ ] Talk (audio dua arah) lewat WebRTC backchannel go2rtc, butuh HTTPS untuk mikrofon
 - [ ] Timeline playback: bar per jam, highlight segmen motion, seek via Range request
 - [ ] Export klip (pilih rentang → download)
 - [ ] Halaman sistem: CPU, RAM, disk, status tiap kamera
@@ -350,7 +353,7 @@ Estimasi total 7–10 minggu kerja part-time. Setiap fase menghasilkan sesuatu y
 
 - [ ] Plugin object detection (ONNX, model berlisensi permisif seperti YOLOX/RT-DETR; **bukan Ultralytics YOLO, karena AGPL**) yang hanya jalan saat ada motion
 - [ ] Mode record `motion-only` dengan pre-buffer
-- [ ] Kontrol PTZ via ONVIF
+- [x] Kontrol PTZ via ONVIF (pan/tilt `ContinuousMove` + `Stop`, timeout 1 s di kamera; dimajukan dari Fase 5 untuk Tapo C2xx)
 - [ ] PWA + push notification di HP
 - [ ] Sinkron arsip event ke S3/MinIO
 - [ ] i18n UI (`en`, `id`)

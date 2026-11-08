@@ -49,6 +49,8 @@ Estimasi total 7–10 minggu kerja part-time. Setiap fase menghasilkan sesuatu y
 - [x] Halaman login & layout dasar (dark default, toggle light)
 - [x] Grid live 1/4/9/16 dengan sub-stream, klik untuk fullscreen main-stream (MSE lewat WebSocket go2rtc, status realtime dari SSE)
 - [x] Form tambah/edit kamera + tombol test koneksi
+- [x] Kontrol di tampilan full-size: snapshot resolusi penuh (download), suara on/off, pad pan & tilt (tahan, atau tombol panah)
+- [ ] Talk (audio dua arah) lewat WebRTC backchannel go2rtc, butuh HTTPS untuk mikrofon
 - [ ] Timeline playback: bar per jam, highlight segmen motion, seek via Range request
 - [ ] Export klip (pilih rentang → download)
 - [ ] Halaman sistem: CPU, RAM, disk, status tiap kamera
@@ -80,7 +82,7 @@ Estimasi total 7–10 minggu kerja part-time. Setiap fase menghasilkan sesuatu y
 
 - [ ] Plugin object detection (ONNX, model berlisensi permisif seperti YOLOX/RT-DETR; **bukan Ultralytics YOLO, karena AGPL**) yang hanya jalan saat ada motion
 - [ ] Mode record `motion-only` dengan pre-buffer
-- [ ] Kontrol PTZ via ONVIF
+- [x] Kontrol PTZ via ONVIF (pan/tilt `ContinuousMove` + `Stop`, timeout 1 s di kamera; dimajukan dari Fase 5 untuk Tapo C2xx)
 - [ ] PWA + push notification di HP
 - [ ] Sinkron arsip event ke S3/MinIO
 - [ ] i18n UI (`en`, `id`)

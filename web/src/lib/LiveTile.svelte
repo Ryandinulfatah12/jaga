@@ -4,8 +4,8 @@
   import { play } from '../lib/mse.js'
   import { statuses, stateView } from '../lib/status.svelte.js'
 
-  /** camera: from GET /cameras; stream: go2rtc stream name; big: fullscreen tile */
-  let { camera, stream, big = false, onopen } = $props()
+  /** camera: from GET /cameras; stream: go2rtc stream name; big: fullscreen tile; muted: bindable */
+  let { camera, stream, big = false, onopen, muted = true } = $props()
 
   let video = $state()
   let live = $state('connecting')
@@ -23,10 +23,10 @@
 </script>
 
 <!-- The name sits under the video, never on it: cameras burn their own OSD into any corner. -->
-<div class="tile relative flex flex-col overflow-hidden rounded-lg border border-line bg-surface {big ? 'h-full' : ''}">
-  <div class="vignette relative bg-black {big ? 'min-h-0 flex-1' : 'aspect-video'}">
-  <!-- Live view has no audio track to read: always muted, so autoplay works. -->
-  <video bind:this={video} muted playsinline class="h-full w-full object-contain" aria-label={'Live: ' + camera.name}></video>
+<div class="relative flex flex-col overflow-hidden {big ? 'h-full' : 'tile rounded-lg border border-line bg-surface'}">
+  <div class="relative {big ? 'min-h-0 flex-1' : 'vignette aspect-video bg-black'}">
+  <!-- Starts muted so autoplay works; the full-size view has a sound button. -->
+  <video bind:this={video} {muted} playsinline class="h-full w-full object-contain" aria-label={'Live: ' + camera.name}></video>
 
   {#if live !== 'playing'}
     <!-- The tile is always black, so fixed light text instead of theme colours. -->

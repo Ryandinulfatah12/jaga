@@ -30,8 +30,8 @@
     test = null
     // URLs come back masked, so editing leaves them empty: blank = keep.
     form = c
-      ? { name: c.name, main_url: '', sub_url: '', enabled: c.enabled, record_mode: c.record_mode, record_audio: c.record_audio, segment_sec: c.segment_sec, retention_days: c.retention_days ?? '' }
-      : { name: '', main_url: '', sub_url: '', enabled: true, record_mode: 'continuous', record_audio: false, segment_sec: 600, retention_days: '' }
+      ? { name: c.name, main_url: '', sub_url: '', enabled: c.enabled, record_mode: c.record_mode, record_audio: c.record_audio, segment_sec: c.segment_sec, retention_days: c.retention_days ?? '', onvif_port: c.onvif_port ?? '' }
+      : { name: '', main_url: '', sub_url: '', enabled: true, record_mode: 'continuous', record_audio: false, segment_sec: 600, retention_days: '', onvif_port: '' }
   }
 
   function body() {
@@ -42,6 +42,7 @@
       record_audio: form.record_audio,
       segment_sec: Number(form.segment_sec),
       retention_days: form.retention_days === '' ? null : Number(form.retention_days),
+      onvif_port: form.onvif_port === '' ? null : Number(form.onvif_port),
     }
     if (form.main_url.trim()) b.main_url = form.main_url.trim()
     if (form.sub_url.trim()) b.sub_url = form.sub_url.trim()
@@ -179,6 +180,10 @@
         <div>
           <label class="mb-1 block text-muted" for="f-ret">Keep for (days)</label>
           <input id="f-ret" type="number" min="1" bind:value={form.retention_days} placeholder="default" class="{input} tnum" />
+        </div>
+        <div>
+          <label class="mb-1 block text-muted" for="f-onvif">ONVIF port <span class="text-xs">(pan &amp; tilt)</span></label>
+          <input id="f-onvif" type="number" min="1" max="65535" bind:value={form.onvif_port} placeholder="off (Tapo: 2020)" class="{input} tnum" />
         </div>
         <div class="flex flex-col justify-end gap-1">
           <label class="flex items-center gap-2"><input type="checkbox" bind:checked={form.enabled} /> Enabled</label>

@@ -3,6 +3,7 @@
   import { onMount } from 'svelte'
   import { get } from '../lib/api.js'
   import LiveTile from '../lib/LiveTile.svelte'
+  import PTZPad from '../lib/PTZPad.svelte'
   import { statuses } from '../lib/status.svelte.js'
 
   let { go, user } = $props()
@@ -13,6 +14,8 @@
   let layout = $state(Number(localStorage.getItem('jaga-grid')) || 4)
   let page = $state(0)
   let open = $state(null) // camera shown full size, main stream
+  let muted = $state(true)
+  let shot = $state('') // snapshot feedback
 
   const cols = { 1: 'grid-cols-1', 4: 'sm:grid-cols-2', 9: 'sm:grid-cols-3', 16: 'sm:grid-cols-4' }
   // On wide screens the grid fits the viewport: width is capped so that the
@@ -48,21 +51,67 @@
     localStorage.setItem('jaga-grid', String(n))
   }
   function onKey(e) {
-    if (e.key === 'Escape') open = null
+    if (e.key === 'Escape') close()
+  }
+  function close() {
+    open = null
+    muted = true
+    shot = ''
+  }
+  // Full-resolution JPEG, saved by the browser (Content-Disposition).
+  async function snapshot() {
+    shot = 'Saving…'
+    const res = await fetch(`/api/v1/cameras/${open.id}/snapshot?stream=main&download=1`, { credentials: 'same-origin' })
+    if (!res.ok) {
+      shot = '✗ ' + ((await res.json().catch(() => null))?.error ?? res.statusText)
+      return
+    }
+    const name = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') ?? '')?.[1] ?? 'snapshot.jpg'
+    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(await res.blob()), download: name })
+    a.click()
+    URL.revokeObjectURL(a.href)
+    shot = '✓ ' + name
   }
 </script>
 
 <svelte:window onkeydown={onKey} />
 
 {#if open}
-  <div class="fixed inset-0 z-30 flex flex-col bg-black/95 p-3 backdrop-blur" role="dialog" aria-modal="true" aria-label={open.name}>
+  <div class="fixed inset-0 z-30 flex h-dvh flex-col bg-black p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]" role="dialog" aria-modal="true" aria-label={open.name}>
     <div class="mb-2 flex items-center gap-3 text-white">
       <span class="font-medium">{open.name}</span>
-      <span class="text-xs text-muted">main stream</span>
-      <button class="ml-auto rounded-full border border-white/15 px-4 py-1 hover:bg-white/10" onclick={() => (open = null)}>Close (Esc)</button>
+      <span class="text-xs text-neutral-400">main stream</span>
+      <button class="ml-auto rounded-full border border-white/15 px-4 py-1 hover:bg-white/10" onclick={close}>Close<span class="hidden [@media(hover:hover)]:inline"> (Esc)</span></button>
     </div>
-    <div class="min-h-0 flex-1">
-      <LiveTile camera={open} stream={`cam${open.id}`} big />
+    <div class="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
+      <!-- Phones: video pinned to the top like a camera app, controls in the thumb zone below. -->
+      <div class="min-h-0 shrink lg:flex-1 max-lg:aspect-video max-lg:w-full">
+        <LiveTile camera={open} stream={`cam${open.id}`} big {muted} />
+      </div>
+      <!-- Controls, like a phone camera app: under the video on small screens, beside it on wide ones. -->
+      <aside class="glass flex shrink-0 flex-wrap items-center justify-center gap-5 rounded-lg p-4 text-white lg:w-60 lg:flex-col">
+        <div class="flex gap-2">
+          <button class="ctl" onclick={snapshot} aria-label="Save snapshot (full resolution)">
+            <svg class="ctl-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z" /><circle cx="12" cy="13" r="3.5" /></svg>Snapshot
+          </button>
+          <button class="ctl" class:on={!muted} onclick={() => (muted = !muted)} aria-pressed={!muted} aria-label={muted ? 'Turn sound on' : 'Mute'}>
+            <svg class="ctl-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" />
+              {#if muted}<path d="M16 9.5l5 5M21 9.5l-5 5" />{:else}<path d="M16 9a4.5 4.5 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11" />{/if}
+            </svg>{muted ? 'Sound off' : 'Sound on'}
+          </button>
+        </div>
+        {#if shot}<p class="w-full truncate text-center text-xs text-neutral-300" role="status" title={shot}>{shot.startsWith('✓') ? '✓ Snapshot saved' : shot}</p>{/if}
+        {#if open.ptz}
+          <div class="flex flex-col items-center gap-1">
+            <span class="text-xs tracking-wide text-neutral-400 uppercase">Pan &amp; tilt</span>
+            <PTZPad camera={open} />
+            <span class="hidden text-xs text-neutral-400 lg:block">Hold, or use the arrow keys</span>
+          </div>
+        {:else}
+          <p class="max-w-56 text-center text-xs text-neutral-500">Pan &amp; tilt: set the ONVIF port in Cameras (Tapo: 2020).</p>
+        {/if}
+      </aside>
     </div>
   </div>
 {/if}
