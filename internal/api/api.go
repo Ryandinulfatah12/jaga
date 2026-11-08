@@ -19,6 +19,7 @@ import (
 
 	"github.com/ryandinulfatah12/jaga/internal/auth"
 	"github.com/ryandinulfatah12/jaga/internal/camera"
+	"github.com/ryandinulfatah12/jaga/internal/live"
 	"github.com/ryandinulfatah12/jaga/internal/probe"
 )
 
@@ -38,6 +39,12 @@ type Server struct {
 	// rate-limit bucket and the cookie lacks Secure; add a config key with
 	// the reverse-proxy docs.
 	TrustProxy bool
+
+	// Live proxies /live/* to go2rtc; nil disables live view and snapshots.
+	Live *live.Proxy
+	// CamerasChanged is called after a camera is created, changed or
+	// deleted, so live view can pick up the change. Optional.
+	CamerasChanged func()
 
 	// Limit is the login rate limit; nil means 5 per minute per IP.
 	Limit *auth.Limiter
@@ -68,6 +75,10 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("PATCH /api/v1/cameras/{id}", admin(s.patchCamera))
 	mux.Handle("DELETE /api/v1/cameras/{id}", admin(s.deleteCamera))
 	mux.Handle("POST /api/v1/cameras/{id}/test", admin(s.testCamera))
+	mux.Handle("GET /api/v1/cameras/{id}/snapshot", user(s.snapshot))
+	if s.Live != nil {
+		mux.Handle("/live/", user(s.Live.ServeHTTP))
+	}
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not found")
 	})

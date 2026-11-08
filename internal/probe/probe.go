@@ -13,7 +13,6 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -181,8 +180,6 @@ func rate(s string) float64 {
 	return num / den
 }
 
-var userinfo = regexp.MustCompile(`(://)[^/@\s]+@`)
-
 // reason picks FFmpeg's last stderr line, with credentials masked.
 func reason(stderr string, err error) string {
 	lines := strings.Split(strings.TrimSpace(stderr), "\n")
@@ -190,5 +187,5 @@ func reason(stderr string, err error) string {
 	if last == "" {
 		return err.Error()
 	}
-	return userinfo.ReplaceAllString(last, "${1}***@")
+	return camera.MaskText(last)
 }

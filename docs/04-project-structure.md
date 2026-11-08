@@ -40,8 +40,10 @@ listen: ":8080"
 data_dir: /data
 ffmpeg_path: ffmpeg
 go2rtc:
-  mode: embedded      # embedded = spawn binary bawaan | external
-  api: 127.0.0.1:1984
+  mode: embedded      # embedded = jaga menjalankan go2rtc | external
+  api: 127.0.0.1:1984 # wajib loopback: API go2rtc bisa menjalankan perintah
+  path: go2rtc        # binary go2rtc (mode embedded)
+  webrtc_port: 8555   # TCP+UDP, harus bisa dijangkau browser
 storage:
   disk_quota_percent: 90
   default_retention_days: 7

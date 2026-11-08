@@ -38,9 +38,9 @@ Estimasi total 7–10 minggu kerja part-time. Setiap fase menghasilkan sesuatu y
 - [x] Router `net/http` (stdlib, tanpa chi), middleware sesi, login/logout, rate limit, CSRF via `http.CrossOriginProtection` (stdlib), plus CRUD `/cameras`
 - [ ] `jaga init` (wizard config + admin pertama) dan `jaga user add|passwd`. `jaga user add|passwd` sudah ada (password dari stdin, tanpa echo di terminal); `jaga init` belum
 - [ ] `jaga doctor`: cek ffmpeg, go2rtc, izin `data_dir`, disk, port
-- [ ] Integrasi go2rtc: generate config lewat YAML marshaller, API hanya `127.0.0.1`, RTSP server go2rtc mati, reload saat berubah
-- [ ] Reverse proxy `/live/*` dengan cek sesi + whitelist path & nama stream (test: `/live/api/config` harus 403)
-- [ ] Snapshot terbaru per kamera (ambil dari go2rtc `frame.jpeg`)
+- [x] Integrasi go2rtc: generate config lewat YAML marshaller, API hanya `127.0.0.1`, RTSP server go2rtc mati, reload saat berubah (URL kamera lewat env `JAGA_CAM_n`, tidak ditulis ke file)
+- [x] Reverse proxy `/live/*` dengan cek sesi + whitelist path & nama stream (test: `/live/api/config` harus 403)
+- [x] Snapshot terbaru per kamera (ambil dari go2rtc `frame.jpeg`, sub-stream bila ada)
 - [ ] Hub WebSocket untuk status kamera realtime
 
 ### Fase 3 — Frontend (±2 minggu)

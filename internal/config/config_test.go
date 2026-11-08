@@ -47,7 +47,7 @@ func TestPrecedenceFileThenEnv(t *testing.T) {
 	cfg, path, err := Load("", env(map[string]string{
 		"JAGA_CONFIG":                     p,
 		"JAGA_STORAGE_DISK_QUOTA_PERCENT": "85",
-		"JAGA_GO2RTC_API":                 "127.0.0.1:2000",
+		"JAGA_GO2RTC_API":                 "[::1]:2000",
 	}))
 	if err != nil {
 		t.Fatal(err)
@@ -55,7 +55,7 @@ func TestPrecedenceFileThenEnv(t *testing.T) {
 	if path != p {
 		t.Errorf("path = %q, want %q", path, p)
 	}
-	if cfg.Listen != ":9000" || cfg.Storage.DiskQuotaPercent != 85 || cfg.Go2RTC.API != "127.0.0.1:2000" {
+	if cfg.Listen != ":9000" || cfg.Storage.DiskQuotaPercent != 85 || cfg.Go2RTC.API != "[::1]:2000" {
 		t.Errorf("got %+v", cfg)
 	}
 	if cfg.Storage.DefaultRetentionDays != 7 {
@@ -74,6 +74,10 @@ func TestInvalid(t *testing.T) {
 		"env not a number":   {env: map[string]string{"JAGA_STORAGE_DISK_QUOTA_PERCENT": "lots"}},
 		"quota out of range": {env: map[string]string{"JAGA_STORAGE_DISK_QUOTA_PERCENT": "100"}},
 		"bad go2rtc mode":    {env: map[string]string{"JAGA_GO2RTC_MODE": "docker"}},
+		"go2rtc api public":  {env: map[string]string{"JAGA_GO2RTC_API": "0.0.0.0:1984"}},
+		"go2rtc api no port": {env: map[string]string{"JAGA_GO2RTC_API": "127.0.0.1"}},
+		"go2rtc api lan":     {env: map[string]string{"JAGA_GO2RTC_API": "192.168.1.5:1984"}},
+		"webrtc port":        {env: map[string]string{"JAGA_GO2RTC_WEBRTC_PORT": "0"}},
 		"unexpanded secret":  {file: "secret_key: ${JAGA_SECRET_KEY}\n"},
 		"missing --config":   {env: map[string]string{"JAGA_CONFIG": "/nonexistent/jaga.yml"}},
 	}
