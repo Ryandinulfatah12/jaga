@@ -14,12 +14,14 @@
   let layout = $state(Number(localStorage.getItem('jaga-grid')) || 4)
   let page = $state(0)
   let open = $state(null) // camera shown full size
-  // Cameras like the Tapo C2xx refuse a second RTSP session on the main
-  // stream while the recorder holds it, so a camera that records its main
-  // stream is watched full size on the sub stream. Recording the sub stream
-  // frees main for full-resolution live view.
-  // ponytail: per-camera switch if a camera allows two sessions.
-  const fullSub = (c) => !!c.sub_url && c.enabled && c.record_mode === 'continuous' && c.record_stream !== 'sub'
+  // Cameras like the Tapo C2xx serve video to only two RTSP sessions at a
+  // time, whatever the stream: the recorder holds one and live view (grid,
+  // already on the sub stream) the other. A third session on the main
+  // stream connects but never gets a frame. So a recording camera with a
+  // sub stream is watched full size on the sub stream too.
+  // ponytail: per-camera "allow full-res live" switch for cameras without
+  // that limit.
+  const fullSub = (c) => !!c.sub_url && c.enabled && c.record_mode === 'continuous'
   let muted = $state(true)
   let shot = $state('') // snapshot feedback
 
@@ -86,7 +88,7 @@
   <div class="fixed inset-0 z-30 flex h-dvh flex-col bg-black p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]" role="dialog" aria-modal="true" aria-label={open.name}>
     <div class="mb-2 flex items-center gap-3 text-white">
       <span class="font-medium">{open.name}</span>
-      <span class="text-xs text-neutral-400" title={fullSub(open) ? 'The main stream is in use by recording' : ''}>{fullSub(open) ? 'sub stream (main is recording)' : 'main stream'}</span>
+      <span class="text-xs text-neutral-400" title={fullSub(open) ? 'The camera allows only two video sessions: one records, one is live' : ''}>{fullSub(open) ? 'sub stream (camera is recording)' : 'main stream'}</span>
       <button class="ml-auto rounded-full border border-white/15 px-4 py-1 hover:bg-white/10" onclick={close}>Close<span class="hidden [@media(hover:hover)]:inline"> (Esc)</span></button>
     </div>
     <div class="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
