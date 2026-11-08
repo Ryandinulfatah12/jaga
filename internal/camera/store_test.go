@@ -154,6 +154,8 @@ func TestStoreValidates(t *testing.T) {
 		"retention zero":    func(c *Camera) { c.RetentionDays = &zero },
 		"config not object": func(c *Camera) { c.MotionConfig = json.RawMessage(`[1]`) },
 		"config not json":   func(c *Camera) { c.MotionConfig = json.RawMessage(`{`) },
+		"record stream":     func(c *Camera) { c.RecordStream = "both" },
+		"sub without url":   func(c *Camera) { c.RecordStream = StreamSub },
 	} {
 		t.Run(name, func(t *testing.T) {
 			c := New("Depan", "rtsp://cam/s")

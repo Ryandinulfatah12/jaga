@@ -30,8 +30,8 @@
     test = null
     // URLs come back masked, so editing leaves them empty: blank = keep.
     form = c
-      ? { name: c.name, main_url: '', sub_url: '', enabled: c.enabled, record_mode: c.record_mode, record_audio: c.record_audio, segment_sec: c.segment_sec, retention_days: c.retention_days ?? '', onvif_port: c.onvif_port ?? '' }
-      : { name: '', main_url: '', sub_url: '', enabled: true, record_mode: 'continuous', record_audio: false, segment_sec: 600, retention_days: '', onvif_port: '' }
+      ? { name: c.name, main_url: '', sub_url: '', enabled: c.enabled, record_mode: c.record_mode, record_stream: c.record_stream, record_audio: c.record_audio, segment_sec: c.segment_sec, retention_days: c.retention_days ?? '', onvif_port: c.onvif_port ?? '' }
+      : { name: '', main_url: '', sub_url: '', enabled: true, record_mode: 'continuous', record_stream: 'main', record_audio: false, segment_sec: 600, retention_days: '', onvif_port: '' }
   }
 
   function body() {
@@ -39,6 +39,7 @@
       name: form.name.trim(),
       enabled: form.enabled,
       record_mode: form.record_mode,
+      record_stream: form.record_stream,
       record_audio: form.record_audio,
       segment_sec: Number(form.segment_sec),
       retention_days: form.retention_days === '' ? null : Number(form.retention_days),
@@ -86,6 +87,11 @@
     }
   }
 
+  // A sub URL is stored (editing: the masked one is shown) or being typed.
+  const hasSub = $derived(!!form.sub_url?.trim() || (editing && editing !== 'new' && !!editing.sub_url))
+  $effect(() => {
+    if (!hasSub && form.record_stream === 'sub') form.record_stream = 'main'
+  })
   const kbps = (k) => (k >= 1000 ? (k / 1000).toFixed(1) + ' Mbps' : k + ' kbps')
   const input = 'h-10 w-full rounded-md border border-field bg-bg/70 px-3'
 </script>
@@ -125,7 +131,7 @@
             {#if s?.error}<span class="block max-w-xs truncate font-mono text-xs text-muted" title={s.error}>{s.error}</span>{/if}
           </td>
           <td class="px-3 py-2 font-mono text-xs text-muted">{c.main_url}</td>
-          <td class="px-3 py-2 text-muted">{c.record_mode === 'off' ? 'off' : `${c.segment_sec / 60} min segments`}</td>
+          <td class="px-3 py-2 text-muted">{c.record_mode === 'off' ? 'off' : `${c.record_stream} stream · ${c.segment_sec / 60} min segments`}</td>
           <td class="px-3 py-2 text-right">
             {#if admin}<button class="rounded-sm px-2 py-1 text-accent-fg hover:underline" onclick={() => edit(c)}>Edit</button>{/if}
           </td>
@@ -171,6 +177,13 @@
           <select id="f-mode" bind:value={form.record_mode} class={input}>
             <option value="continuous">Continuous</option>
             <option value="off">Off</option>
+          </select>
+        </div>
+        <div>
+          <label class="mb-1 block text-muted" for="f-stream">Record stream</label>
+          <select id="f-stream" bind:value={form.record_stream} class={input}>
+            <option value="main">Main (full resolution)</option>
+            <option value="sub" disabled={!hasSub}>Sub (smaller files){hasSub ? '' : ', needs a sub URL'}</option>
           </select>
         </div>
         <div>

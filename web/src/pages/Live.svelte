@@ -15,10 +15,11 @@
   let page = $state(0)
   let open = $state(null) // camera shown full size
   // Cameras like the Tapo C2xx refuse a second RTSP session on the main
-  // stream while the recorder holds it, so a recording camera with a sub
-  // stream is watched full size on the sub stream.
-  // ponytail: per-camera main/sub switch if a camera allows two sessions.
-  const fullSub = (c) => !!c.sub_url && c.enabled && c.record_mode === 'continuous'
+  // stream while the recorder holds it, so a camera that records its main
+  // stream is watched full size on the sub stream. Recording the sub stream
+  // frees main for full-resolution live view.
+  // ponytail: per-camera switch if a camera allows two sessions.
+  const fullSub = (c) => !!c.sub_url && c.enabled && c.record_mode === 'continuous' && c.record_stream !== 'sub'
   let muted = $state(true)
   let shot = $state('') // snapshot feedback
 

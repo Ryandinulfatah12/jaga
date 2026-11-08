@@ -23,6 +23,7 @@ type cameraOut struct {
 	SubURL        string          `json:"sub_url,omitempty"`
 	Enabled       bool            `json:"enabled"`
 	RecordMode    string          `json:"record_mode"`
+	RecordStream  string          `json:"record_stream"`
 	RecordAudio   bool            `json:"record_audio"`
 	SegmentSec    int             `json:"segment_sec"`
 	RetentionDays *int            `json:"retention_days"`
@@ -36,7 +37,7 @@ type cameraOut struct {
 func out(c camera.Camera) cameraOut {
 	o := cameraOut{
 		ID: c.ID, Name: c.Name, MainURL: camera.MaskURL(c.MainURL), Enabled: c.Enabled,
-		RecordMode: c.RecordMode, RecordAudio: c.RecordAudio, SegmentSec: c.SegmentSec,
+		RecordMode: c.RecordMode, RecordStream: c.RecordStream, RecordAudio: c.RecordAudio, SegmentSec: c.SegmentSec,
 		RetentionDays: c.RetentionDays, MotionMode: c.MotionMode, MotionConfig: c.MotionConfig, CreatedAt: c.CreatedAt,
 		ONVIFPort: c.ONVIFPort, PTZ: c.ONVIFPort != nil,
 	}
@@ -54,6 +55,7 @@ type cameraIn struct {
 	SubURL        *string          `json:"sub_url"`
 	Enabled       *bool            `json:"enabled"`
 	RecordMode    *string          `json:"record_mode"`
+	RecordStream  *string          `json:"record_stream"`
 	RecordAudio   *bool            `json:"record_audio"`
 	SegmentSec    *int             `json:"segment_sec"`
 	RetentionDays json.RawMessage  `json:"retention_days"`
@@ -72,6 +74,7 @@ func (in cameraIn) apply(c *camera.Camera) error {
 	set(&c.MainURL, in.MainURL)
 	set(&c.SubURL, in.SubURL)
 	set(&c.RecordMode, in.RecordMode)
+	set(&c.RecordStream, in.RecordStream)
 	set(&c.MotionMode, in.MotionMode)
 	if in.Enabled != nil {
 		c.Enabled = *in.Enabled

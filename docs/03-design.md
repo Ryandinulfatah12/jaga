@@ -6,7 +6,7 @@
 | --- | --- | --- |
 | `users` | id, username, password\_hash (argon2id), role, created\_at | role: `admin` / `viewer` |
 | `sessions` | token\_hash, user\_id, expires\_at | cookie HttpOnly, rotasi tiap login |
-| `cameras` | id, name, main\_url, sub\_url, enabled, record\_mode, record\_audio, segment\_sec, retention\_days, motion\_mode, motion\_config (JSON), created\_at | URL RTSP disimpan terenkripsi (AES-GCM, key dari env); `record_audio` default 0 |
+| `cameras` | id, name, main\_url, sub\_url, enabled, record\_mode, record\_stream, record\_audio, segment\_sec, retention\_days, motion\_mode, motion\_config (JSON), created\_at | URL RTSP disimpan terenkripsi (AES-GCM, key dari env); `record_audio` default 0 |
 | `segments` | id, camera\_id, path, start\_ts, end\_ts, size\_bytes, has\_motion | index (camera\_id, start\_ts) untuk timeline |
 | `events` | id, camera\_id, type, start\_ts, end\_ts, score, snapshot\_path, meta (JSON) | type: `motion`, `offline`, `online`, `disk_full` |
 | `notifiers` | id, kind, config (JSON), enabled | kind: `telegram`, `webhook` |
@@ -33,7 +33,7 @@ Folder per tanggal membuat retensi cukup dengan menghapus folder lama, lalu meng
 ```
 ffmpeg -nostdin -hide_banner -nostats -loglevel warning -progress pipe:3 \
   -protocol_whitelist rtsp,rtsps,rtp,udp,tcp,tls \
-  -rtsp_transport tcp -timeout 5000000 -i <main_url> \
+  -rtsp_transport tcp -timeout 5000000 -i <main_url | sub_url bila record_stream=sub> \
   -map 0:v -c:v copy [-map 0:a? -c:a aac -b:a 64k  # hanya jika record_audio] \
   -f segment -segment_time 600 -segment_format mp4 \
   -segment_format_options movflags=+frag_keyframe+empty_moov \

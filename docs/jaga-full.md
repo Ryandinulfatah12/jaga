@@ -91,7 +91,7 @@ Supervisor juga men-spawn FFmpeg motion dan go2rtc (panahnya tidak digambar agar
 | --- | --- | --- |
 | `users` | id, username, password\_hash (argon2id), role, created\_at | role: `admin` / `viewer` |
 | `sessions` | token\_hash, user\_id, expires\_at | cookie HttpOnly, rotasi tiap login |
-| `cameras` | id, name, main\_url, sub\_url, enabled, record\_mode, record\_audio, segment\_sec, retention\_days, motion\_mode, motion\_config (JSON), onvif\_port, created\_at | URL RTSP disimpan terenkripsi (AES-GCM, key dari env); `record_audio` default 0; `onvif_port` NULL = tanpa PTZ, host & akun ONVIF diambil dari `main_url` |
+| `cameras` | id, name, main\_url, sub\_url, enabled, record\_mode, record\_stream, record\_audio, segment\_sec, retention\_days, motion\_mode, motion\_config (JSON), onvif\_port, created\_at | URL RTSP disimpan terenkripsi (AES-GCM, key dari env); `record_audio` default 0; `record_stream` `main` (resolusi penuh, default) atau `sub` (file lebih kecil, wajib `sub_url`); `onvif_port` NULL = tanpa PTZ, host & akun ONVIF diambil dari `main_url` |
 | `segments` | id, camera\_id, path, start\_ts, end\_ts, size\_bytes, has\_motion | index (camera\_id, start\_ts) untuk timeline |
 | `events` | id, camera\_id, type, start\_ts, end\_ts, score, snapshot\_path, meta (JSON) | type: `motion`, `offline`, `online`, `disk_full` |
 | `notifiers` | id, kind, config (JSON), enabled | kind: `telegram`, `webhook` |
@@ -118,7 +118,7 @@ Folder per tanggal membuat retensi cukup dengan menghapus folder lama, lalu meng
 ```
 ffmpeg -nostdin -hide_banner -nostats -loglevel warning -progress pipe:3 \
   -protocol_whitelist rtsp,rtsps,rtp,udp,tcp,tls \
-  -rtsp_transport tcp -timeout 5000000 -i <main_url> \
+  -rtsp_transport tcp -timeout 5000000 -i <main_url | sub_url bila record_stream=sub> \
   -map 0:v -c:v copy [-map 0:a? -c:a aac -b:a 64k  # hanya jika record_audio] \
   -f segment -segment_time 600 -segment_format mp4 \
   -segment_format_options movflags=+frag_keyframe+empty_moov \
@@ -320,6 +320,7 @@ Estimasi total 7–10 minggu kerja part-time. Setiap fase menghasilkan sesuatu y
 - [x] Halaman login & layout dasar (dark default, toggle light)
 - [x] Grid live 1/4/9/16 dengan sub-stream, klik untuk fullscreen main-stream (MSE lewat WebSocket go2rtc, status realtime dari SSE)
 - [x] Form tambah/edit kamera + tombol test koneksi
+- [x] Pilih stream yang direkam per kamera (`record_stream` main/sub): sub hemat disk dan membebaskan main untuk live full-size resolusi penuh
 - [x] Kontrol di tampilan full-size: snapshot resolusi penuh (download), suara on/off, pad pan & tilt (tahan, atau tombol panah)
 - [ ] Talk (audio dua arah) lewat WebRTC backchannel go2rtc, butuh HTTPS untuk mikrofon
 - [x] Timeline playback: bar 24 jam per kamera per hari, highlight segmen motion, seek via Range request (`http.ServeContent`), lanjut otomatis ke segmen berikutnya, tombol panah ±1/10 menit, download segmen

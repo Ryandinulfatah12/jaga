@@ -117,3 +117,19 @@ func TestFFprobePath(t *testing.T) {
 		t.Errorf("FFprobePath bare = %q", got)
 	}
 }
+
+func TestBuildRecordsSubStream(t *testing.T) {
+	c := cam()
+	c.SubURL, c.RecordStream = "rtsp://admin:pass@192.168.0.60:554/stream2", camera.StreamSub
+	cmd, err := Build("ffmpeg", "data", c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if i := slices.Index(cmd.Args, "-i"); i < 0 || cmd.Args[i+1] != c.SubURL {
+		t.Errorf("input = %q, want the sub URL", cmd.Args)
+	}
+	c.SubURL = "-bad"
+	if _, err := Build("ffmpeg", "data", c); err == nil {
+		t.Error("a bad sub URL must be rejected before it reaches argv")
+	}
+}
