@@ -62,4 +62,15 @@ $ jaga doctor
 - Parsing perintah: package `flag` dari standard library, satu `FlagSet` per perintah sehingga flag global boleh ditaruh sebelum atau sesudah perintah. Ganti ke `spf13/cobra` bila perintah mulai bertingkat (`jaga user add`, `jaga camera list`) atau butuh shell completion.
 - Output: `charmbracelet/lipgloss` untuk warna, `log/slog` dengan handler teks berwarna untuk TTY dan handler JSON untuk non-TTY.
 - Lokasi kode: `cmd/jaga/` hanya menangkap sinyal dan memanggil `cli.Run`, `internal/cli/` untuk tiap subcommand, `internal/config/` untuk `jaga.yml` + env, dan `internal/ui/term/` untuk palet dan simbol.
-- Belum ada (menyusul): `--no-color` dan banner berwarna (bersama `internal/ui/term`), versi go2rtc di `jaga version` (Fase 2).
+- Sudah ada: `start`, `migrate`, `version`, `probe`. Belum ada (menyusul): `init`, `doctor`, `camera`, `user`, `backup`, `--no-color` dan banner berwarna (bersama `internal/ui/term`), versi go2rtc di `jaga version` (Fase 2).
+
+### Contoh output `jaga probe`
+
+```
+$ jaga probe rtsp://admin:pass@192.168.0.60:554/stream1 --seconds 6
+✓ rtsp://***@192.168.0.60:554/stream1  (sampled 5.8s)
+  video  H264 1920×1080 25 fps  2.0 Mbps  keyframe 2.0s
+  audio  AAC 16000 Hz 1 ch  32 kbps
+```
+
+Default 5 detik sampling (`--seconds 1-60`). Password di URL selalu disamarkan, juga di pesan error (`404 Not Found`, `Connection refused`). Logikanya (`internal/probe`) sama dengan yang nanti dipakai `POST /cameras/{id}/test`.

@@ -31,7 +31,7 @@ Folder per tanggal membuat retensi cukup dengan menghapus folder lama, lalu meng
 ### Perintah FFmpeg recording
 
 ```
-ffmpeg -nostdin -hide_banner -loglevel warning \
+ffmpeg -nostdin -hide_banner -nostats -loglevel warning -progress pipe:3 \
   -protocol_whitelist rtsp,rtsps,rtp,udp,tcp,tls \
   -rtsp_transport tcp -timeout 5000000 -i <main_url> \
   -map 0:v [-map 0:a?  # hanya jika record_audio] -c copy \
@@ -48,9 +48,11 @@ Argumen dibangun sebagai slice oleh `internal/recorder` (`recorder.Build`) dan d
 
 1. `idle` → `starting`: kamera enabled, spawn FFmpeg.
 2. `starting` → `running`: segmen pertama tercatat atau stderr menunjukkan frame masuk dalam 15 detik.
-3. `running` → `stalled`: tidak ada output baru selama 2× `segment_sec` atau progress (`-progress pipe:2`) berhenti 30 detik. Proses di-kill.
-4. `stalled` / `exited` → `backoff`: tunggu 2 s, 4 s, 8 s ... maks 60 s, lalu kembali ke `starting`. Event `offline` dicatat setelah 3 kali gagal. Setiap exit yang tidak diminta supervisor masuk ke sini, **termasuk exit 0**, karena FFmpeg keluar dengan kode 0 saat `-timeout` RTSP habis. Exit code tidak dipakai untuk menentukan penyebab; alasannya diambil dari baris stderr terakhir.
+3. `running` → `stalled`: tidak ada segmen baru selama 2× `segment_sec` + 30 detik, atau progress (`-progress pipe:3`, lewat `ExtraFiles` agar stderr tetap untuk pesan error) tidak menunjukkan frame/`out_time` bertambah selama 30 detik. Proses di-kill.
+4. `stalled` / `exited` → `backoff`: tunggu 2 s, 4 s, 8 s ... maks 60 s, lalu kembali ke `starting`. Event `offline` dibuka setelah 3 kali gagal berturut-turut (alasan di `meta.reason`) dan ditutup begitu frame kembali masuk; event yang masih terbuka dari run sebelumnya ditutup saat start. Recorder yang sudah jalan selama 60 detik mereset backoff ke 2 s. Setiap exit yang tidak diminta supervisor masuk ke sini, **termasuk exit 0**, karena FFmpeg keluar dengan kode 0 saat `-timeout` RTSP habis. Exit code tidak dipakai untuk menentukan penyebab; alasannya diambil dari baris stderr terakhir.
 5. `running` → `stopping` → `idle`: kamera di-disable atau config berubah (SIGINT dulu agar segmen tertutup rapi, SIGKILL setelah 5 detik).
+
+**Graceful shutdown.** SIGINT/SIGTERM pertama ke `jaga` menghentikan semua recorder sekaligus: SIGINT ke setiap FFmpeg, tunggu segmen terakhirnya ditutup dan masuk tabel `segments`, SIGKILL untuk FFmpeg yang belum keluar setelah 5 detik. Waktunya tidak bertambah dengan jumlah kamera (3 kamera berhenti dalam ±0,6 s saat diuji). Sinyal kedua langsung mematikan `jaga` bila shutdown macet. Batas stop dari service manager harus lebih dari 5 detik: Docker default 10 s sudah cukup, untuk systemd pakai `TimeoutStopSec` minimal 15 s.
 
 ### Motion detection
 
@@ -61,8 +63,11 @@ Argumen dibangun sebagai slice oleh `internal/recorder` (`recorder.Build`) dan d
 
 ### Retensi & disk
 
-- Job tiap 10 menit: hapus segmen lebih tua dari `retention_days` per kamera.
-- Jika pemakaian disk > kuota (default 90%): hapus segmen tertua global yang `has_motion = 0`, baru kemudian yang bermotion. Catat event `disk_full` jika tetap penuh.
+- Job (`internal/retention`) jalan saat start lalu tiap 10 menit: hapus segmen yang `end_ts`-nya lebih tua dari `retention_days` kamera (NULL = `storage.default_retention_days`).
+- Jika pemakaian filesystem `data_dir` (dihitung seperti `df`) > kuota (default 90%): hapus segmen tertua global yang `has_motion = 0`, baru kemudian yang bermotion, **secukupnya** sampai di bawah kuota. Event `disk_full` dibuka bila tetap penuh (isi disk lain yang memenuhi) dan ditutup begitu kembali di bawah kuota.
+- File dihapus dulu, baru barisnya. Jika file gagal dihapus, baris dibiarkan agar dicoba lagi; jika file sudah tidak ada, baris tetap dihapus. Path di luar `data_dir/recordings` tidak pernah dihapus.
+- Folder tanggal yang kosong dan lebih tua dari hari ini ikut dihapus; folder hari ini dan besok dibiarkan untuk FFmpeg.
+- **Rekonsiliasi** (`Reconcile`) jalan sebelum setiap putaran retensi, termasuk saat start. File `.mp4` berpola nama Jaga tanpa baris DB di-`ffprobe`: yang terbaca di-insert (`end_ts` = mtime, `start_ts` = `end_ts` − durasi), yang rusak dihapus. File milik kamera yang sudah dihapus ikut dihapus. Baris yang file-nya hilang dihapus. File yang diubah kurang dari 2 menit lalu tidak disentuh, karena mungkin masih ditulis FFmpeg. File dengan nama lain dibiarkan.
 
 ### REST API (prefix `/api/v1`)
 

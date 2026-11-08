@@ -18,6 +18,10 @@ import (
 // (docs/spikes/segment-index.md).
 const SegmentPattern = "%Y-%m-%d/%Y%m%d-%H%M%S.mp4"
 
+// ProgressFD is the file descriptor FFmpeg writes -progress output to. The
+// supervisor passes a pipe there through exec.Cmd.ExtraFiles (fd 3).
+const ProgressFD = 3
+
 // Command is what the supervisor runs: exec.Command(Path, Args...) with Env
 // appended to the environment.
 type Command struct {
@@ -48,7 +52,10 @@ func Build(ffmpegPath, dataDir string, c camera.Camera) (Command, error) {
 	}
 
 	args := []string{
-		"-nostdin", "-hide_banner", "-loglevel", "warning",
+		"-nostdin", "-hide_banner", "-nostats", "-loglevel", "warning",
+		// key=value progress blocks on fd 3 feed the supervisor's stall
+		// watchdog; stderr stays free for error messages.
+		"-progress", "pipe:" + strconv.Itoa(ProgressFD),
 		// Only network protocols, so a URL can never read local files.
 		"-protocol_whitelist", "rtsp,rtsps,rtp,udp,tcp,tls",
 		// -timeout makes FFmpeg exit when a camera stops sending but keeps

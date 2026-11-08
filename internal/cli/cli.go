@@ -15,12 +15,17 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ryandinulfatah12/jaga/internal/camera"
 	"github.com/ryandinulfatah12/jaga/internal/config"
 	"github.com/ryandinulfatah12/jaga/internal/db"
+	"github.com/ryandinulfatah12/jaga/internal/probe"
+	"github.com/ryandinulfatah12/jaga/internal/recorder"
+	"github.com/ryandinulfatah12/jaga/internal/retention"
 	"github.com/ryandinulfatah12/jaga/internal/supervisor"
 	"github.com/ryandinulfatah12/jaga/internal/version"
 	"github.com/ryandinulfatah12/jaga/migrations"
@@ -39,6 +44,7 @@ const usage = `Usage: jaga [flags] <command>
 Commands:
   start     run the server (default)
   migrate   apply database migrations and exit
+  probe     probe <rtsp-url> [--seconds N]: codec, resolution, fps, bitrate (nothing stored)
   version   print version and detected dependencies
 
 Flags:
@@ -50,6 +56,7 @@ Flags:
 
 type globals struct {
 	config, dataDir, logLevel, logFormat string
+	seconds                              int // probe only
 }
 
 // register binds the global flags to fs. Defaults are the current values, so
@@ -59,6 +66,7 @@ func (g *globals) register(fs *flag.FlagSet) {
 	fs.StringVar(&g.dataDir, "data-dir", g.dataDir, "")
 	fs.StringVar(&g.logLevel, "log-level", g.logLevel, "")
 	fs.StringVar(&g.logFormat, "log-format", g.logFormat, "")
+	fs.IntVar(&g.seconds, "seconds", g.seconds, "")
 }
 
 type env struct {
@@ -71,7 +79,7 @@ type env struct {
 
 // Run executes jaga with args (without the program name) and returns the exit code.
 func Run(ctx context.Context, args []string, stdout, stderr io.Writer, lookup func(string) (string, bool)) int {
-	e := &env{ctx: ctx, stdout: stdout, stderr: stderr, lookup: lookup, g: globals{logLevel: "info", logFormat: "text"}}
+	e := &env{ctx: ctx, stdout: stdout, stderr: stderr, lookup: lookup, g: globals{logLevel: "info", logFormat: "text", seconds: 5}}
 
 	root := newFlagSet("jaga")
 	e.g.register(root)
@@ -86,6 +94,14 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer, lookup fu
 	e.g.register(sub)
 	if err := sub.Parse(rest); err != nil {
 		return usageError(stderr, err)
+	}
+	// probe takes the URL as its one argument; flags may follow it.
+	var probeURL string
+	if cmd == "probe" && sub.NArg() > 0 {
+		probeURL = sub.Arg(0)
+		if err := sub.Parse(sub.Args()[1:]); err != nil {
+			return usageError(stderr, err)
+		}
 	}
 	if sub.NArg() > 0 {
 		return usageError(stderr, fmt.Errorf("%s: unexpected argument %q", cmd, sub.Arg(0)))
@@ -104,6 +120,11 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer, lookup fu
 		return e.migrate()
 	case "version":
 		return e.version()
+	case "probe":
+		if probeURL == "" {
+			return usageError(stderr, errors.New("probe: missing <rtsp-url>"))
+		}
+		return e.probe(probeURL)
 	case "help":
 		_, _ = fmt.Fprint(stdout, usage)
 		return exitOK
@@ -199,8 +220,8 @@ func (e *env) migrate() int {
 }
 
 // start runs until ctx is cancelled (SIGINT/SIGTERM in main).
-// ponytail: config, DB and the recording supervisor for now; API and
-// retention get wired here as their F1/F2 tasks land.
+// ponytail: config, DB, recording supervisor and retention for now; the API
+// gets wired here in phase 2.
 func (e *env) start() int {
 	cfg, code := e.loadConfig()
 	if code != exitOK {
@@ -236,12 +257,86 @@ func (e *env) start() int {
 		}
 	}
 	sup := &supervisor.Supervisor{FFmpegPath: ffmpeg, DataDir: cfg.DataDir, DB: conn, Log: e.log}
+	ret := &retention.Job{
+		DB: conn, DataDir: cfg.DataDir, Log: e.log,
+		DefaultDays:  cfg.Storage.DefaultRetentionDays,
+		QuotaPercent: cfg.Storage.DiskQuotaPercent,
+		Probe: func(ctx context.Context, path string) (time.Duration, error) {
+			return recorder.Duration(ctx, recorder.FFprobePath(ffmpeg), path)
+		},
+	}
 
 	e.log.Info("ready", "version", version.Version, "data_dir", cfg.DataDir, "listen", cfg.Listen,
 		"cameras", len(all), "recording", len(rec))
+	var wg sync.WaitGroup
+	wg.Go(func() { ret.Run(e.ctx) })
 	sup.Run(e.ctx, rec) // returns after ctx is cancelled and every recorder has stopped
+	wg.Wait()
 	e.log.Info("shutting down")
 	return exitOK
+}
+
+// probe prints what ffprobe sees at url, the same check POST
+// /cameras/{id}/test runs. The URL is shown with credentials masked.
+func (e *env) probe(url string) int {
+	// Bad input is reported before anything else, ffmpeg or not.
+	if err := camera.ValidateURL(url); err != nil {
+		return usageError(e.stderr, err)
+	}
+	if e.g.seconds < 1 || e.g.seconds > 60 {
+		return usageError(e.stderr, fmt.Errorf("--seconds %d: want 1-60", e.g.seconds))
+	}
+	cfg, _, err := config.Load(e.g.config, e.lookup)
+	if err != nil {
+		cfg = config.Default() // only ffmpeg_path matters here
+	}
+	ffmpeg, err := exec.LookPath(cfg.FFmpegPath)
+	if err != nil {
+		e.log.Error("ffmpeg not found, install it or set ffmpeg_path", "ffmpeg_path", cfg.FFmpegPath)
+		return exitDeps
+	}
+	res, err := probe.Probe(e.ctx, recorder.FFprobePath(ffmpeg), url, time.Duration(e.g.seconds)*time.Second)
+	if err != nil {
+		// Both error kinds already mask credentials.
+		_, _ = fmt.Fprintf(e.stderr, "✗ %s\n  %v\n", camera.MaskURL(url), err)
+		return exitError
+	}
+	_, _ = fmt.Fprintf(e.stdout, "✓ %s  (sampled %.1fs)\n", camera.MaskURL(url), res.Sampled.Seconds())
+	for _, s := range res.Streams {
+		_, _ = fmt.Fprintln(e.stdout, "  "+describe(s))
+	}
+	return exitOK
+}
+
+// describe formats one stream, e.g. "video  H264 1920×1080 25 fps  2.1 Mbps  keyframe 2.0s".
+func describe(s probe.Stream) string {
+	parts := []string{fmt.Sprintf("%-5s  %s", s.Type, strings.ToUpper(s.Codec))}
+	switch s.Type {
+	case "video":
+		if s.Width > 0 {
+			parts = append(parts, fmt.Sprintf("%d×%d", s.Width, s.Height))
+		}
+		if s.FPS > 0 {
+			parts = append(parts, strconv.FormatFloat(s.FPS, 'f', -1, 64)+" fps")
+		}
+	case "audio":
+		if s.SampleRate > 0 {
+			parts = append(parts, fmt.Sprintf("%d Hz", s.SampleRate))
+		}
+		if s.Channels > 0 {
+			parts = append(parts, fmt.Sprintf("%d ch", s.Channels))
+		}
+	}
+	switch {
+	case s.BitrateKbps >= 1000:
+		parts = append(parts, fmt.Sprintf(" %.1f Mbps", float64(s.BitrateKbps)/1000))
+	case s.BitrateKbps > 0:
+		parts = append(parts, fmt.Sprintf(" %d kbps", s.BitrateKbps))
+	}
+	if s.GOPSeconds > 0 {
+		parts = append(parts, fmt.Sprintf(" keyframe %.1fs", s.GOPSeconds))
+	}
+	return strings.Join(parts, " ")
 }
 
 func (e *env) version() int {

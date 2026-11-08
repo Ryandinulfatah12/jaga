@@ -116,7 +116,7 @@ Folder per tanggal membuat retensi cukup dengan menghapus folder lama, lalu meng
 ### Perintah FFmpeg recording
 
 ```
-ffmpeg -nostdin -hide_banner -loglevel warning \
+ffmpeg -nostdin -hide_banner -nostats -loglevel warning -progress pipe:3 \
   -protocol_whitelist rtsp,rtsps,rtp,udp,tcp,tls \
   -rtsp_transport tcp -timeout 5000000 -i <main_url> \
   -map 0:v [-map 0:a?  # hanya jika record_audio] -c copy \
@@ -133,9 +133,11 @@ Argumen dibangun sebagai slice oleh `internal/recorder` (`recorder.Build`) dan d
 
 1. `idle` → `starting`: kamera enabled, spawn FFmpeg.
 2. `starting` → `running`: segmen pertama tercatat atau stderr menunjukkan frame masuk dalam 15 detik.
-3. `running` → `stalled`: tidak ada output baru selama 2× `segment_sec` atau progress (`-progress pipe:2`) berhenti 30 detik. Proses di-kill.
-4. `stalled` / `exited` → `backoff`: tunggu 2 s, 4 s, 8 s ... maks 60 s, lalu kembali ke `starting`. Event `offline` dicatat setelah 3 kali gagal. Setiap exit yang tidak diminta supervisor masuk ke sini, **termasuk exit 0**, karena FFmpeg keluar dengan kode 0 saat `-timeout` RTSP habis. Exit code tidak dipakai untuk menentukan penyebab; alasannya diambil dari baris stderr terakhir.
+3. `running` → `stalled`: tidak ada segmen baru selama 2× `segment_sec` + 30 detik, atau progress (`-progress pipe:3`, lewat `ExtraFiles` agar stderr tetap untuk pesan error) tidak menunjukkan frame/`out_time` bertambah selama 30 detik. Proses di-kill.
+4. `stalled` / `exited` → `backoff`: tunggu 2 s, 4 s, 8 s ... maks 60 s, lalu kembali ke `starting`. Event `offline` dibuka setelah 3 kali gagal berturut-turut (alasan di `meta.reason`) dan ditutup begitu frame kembali masuk; event yang masih terbuka dari run sebelumnya ditutup saat start. Recorder yang sudah jalan selama 60 detik mereset backoff ke 2 s. Setiap exit yang tidak diminta supervisor masuk ke sini, **termasuk exit 0**, karena FFmpeg keluar dengan kode 0 saat `-timeout` RTSP habis. Exit code tidak dipakai untuk menentukan penyebab; alasannya diambil dari baris stderr terakhir.
 5. `running` → `stopping` → `idle`: kamera di-disable atau config berubah (SIGINT dulu agar segmen tertutup rapi, SIGKILL setelah 5 detik).
+
+**Graceful shutdown.** SIGINT/SIGTERM pertama ke `jaga` menghentikan semua recorder sekaligus: SIGINT ke setiap FFmpeg, tunggu segmen terakhirnya ditutup dan masuk tabel `segments`, SIGKILL untuk FFmpeg yang belum keluar setelah 5 detik. Waktunya tidak bertambah dengan jumlah kamera (3 kamera berhenti dalam ±0,6 s saat diuji). Sinyal kedua langsung mematikan `jaga` bila shutdown macet. Batas stop dari service manager harus lebih dari 5 detik: Docker default 10 s sudah cukup, untuk systemd pakai `TimeoutStopSec` minimal 15 s.
 
 ### Motion detection
 
@@ -146,8 +148,11 @@ Argumen dibangun sebagai slice oleh `internal/recorder` (`recorder.Build`) dan d
 
 ### Retensi & disk
 
-- Job tiap 10 menit: hapus segmen lebih tua dari `retention_days` per kamera.
-- Jika pemakaian disk > kuota (default 90%): hapus segmen tertua global yang `has_motion = 0`, baru kemudian yang bermotion. Catat event `disk_full` jika tetap penuh.
+- Job (`internal/retention`) jalan saat start lalu tiap 10 menit: hapus segmen yang `end_ts`-nya lebih tua dari `retention_days` kamera (NULL = `storage.default_retention_days`).
+- Jika pemakaian filesystem `data_dir` (dihitung seperti `df`) > kuota (default 90%): hapus segmen tertua global yang `has_motion = 0`, baru kemudian yang bermotion, **secukupnya** sampai di bawah kuota. Event `disk_full` dibuka bila tetap penuh (isi disk lain yang memenuhi) dan ditutup begitu kembali di bawah kuota.
+- File dihapus dulu, baru barisnya. Jika file gagal dihapus, baris dibiarkan agar dicoba lagi; jika file sudah tidak ada, baris tetap dihapus. Path di luar `data_dir/recordings` tidak pernah dihapus.
+- Folder tanggal yang kosong dan lebih tua dari hari ini ikut dihapus; folder hari ini dan besok dibiarkan untuk FFmpeg.
+- **Rekonsiliasi** (`Reconcile`) jalan sebelum setiap putaran retensi, termasuk saat start. File `.mp4` berpola nama Jaga tanpa baris DB di-`ffprobe`: yang terbaca di-insert (`end_ts` = mtime, `start_ts` = `end_ts` − durasi), yang rusak dihapus. File milik kamera yang sudah dihapus ikut dihapus. Baris yang file-nya hilang dihapus. File yang diubah kurang dari 2 menit lalu tidak disentuh, karena mungkin masih ditulis FFmpeg. File dengan nama lain dibiarkan.
 
 ### REST API (prefix `/api/v1`)
 
@@ -276,18 +281,18 @@ Estimasi total 7–10 minggu kerja part-time. Setiap fase menghasilkan sesuatu y
 
 ### Fase 1 — Fondasi recording (±2 minggu)
 
-- [ ] Kerangka CLI: `jaga start`, `jaga version`, `jaga migrate`, flag global, load `jaga.yml` + env `JAGA_*`
-- [ ] Migrasi awal: `users`, `cameras`, `segments`, `events`, `settings`
-- [ ] Service CRUD kamera + enkripsi URL
-- [ ] Endpoint `POST /cameras/{id}/test` via ffprobe (logika yang sama dipakai `jaga probe`)
-- [ ] Validasi URL kamera (skema `rtsp`/`rtsps` saja) + unit test untuk input jahat (`file:`, `exec:`, `-i`, newline)
-- [ ] Builder argumen FFmpeg recording (copy, segment, fragmented MP4)
-- [ ] Supervisor: spawn, baca segment list dari stdout, insert `segments`
-- [ ] Deteksi stall via `-progress` + backoff eksponensial
-- [ ] Graceful shutdown (SIGINT ke semua FFmpeg, tunggu segmen tertutup)
-- [ ] Job retensi berbasis hari + kuota disk
-- [ ] Rekonsiliasi saat startup: file di disk tanpa baris DB (dan sebaliknya)
-- [ ] Uji: cabut kabel kamera 5 menit → recording lanjut otomatis tanpa intervensi
+- [x] Kerangka CLI: `jaga start`, `jaga version`, `jaga migrate`, flag global, load `jaga.yml` + env `JAGA_*` (PR #2; parsing pakai package `flag`, belum cobra)
+- [x] Migrasi awal: `users`, `cameras`, `segments`, `events`, `settings` (PR #3, plus `sessions`, `notifiers`)
+- [x] Service CRUD kamera + enkripsi URL (PR #3, AES-256-GCM, key HKDF dari `secret_key`)
+- [ ] Endpoint `POST /cameras/{id}/test` via ffprobe (logika yang sama dipakai `jaga probe`). Logika probe + `jaga probe <url>` sudah ada (`internal/probe`); endpoint HTTP-nya menunggu router di Fase 2
+- [x] Validasi URL kamera (skema `rtsp`/`rtsps` saja) + unit test untuk input jahat (`file:`, `exec:`, `-i`, newline) (PR #3, plus fuzz test)
+- [x] Builder argumen FFmpeg recording (copy, segment, fragmented MP4) (PR #4)
+- [x] Supervisor: spawn, baca segment list dari stdout, insert `segments` (PR #4)
+- [x] Deteksi stall via `-progress` + backoff eksponensial (event `offline`/online)
+- [x] Graceful shutdown (SIGINT ke semua FFmpeg, tunggu segmen tertutup)
+- [x] Job retensi berbasis hari + kuota disk (event `disk_full`)
+- [x] Rekonsiliasi saat startup: file di disk tanpa baris DB (dan sebaliknya)
+- [x] Uji: cabut kabel kamera 5 menit → recording lanjut otomatis tanpa intervensi (7 Nov 2026, simulasi: network container `jaga` diputus 5 menit dengan kamera mediamtx; backoff 2 s → 60 s, event `offline` 298 s, rekaman lanjut 15 s setelah kabel dipasang. Ulangi dengan kamera fisik sebelum Fase 5)
 
 ### Fase 2 — API, auth & live view (±1–2 minggu)
 
@@ -665,7 +670,18 @@ $ jaga doctor
 - Parsing perintah: package `flag` dari standard library, satu `FlagSet` per perintah sehingga flag global boleh ditaruh sebelum atau sesudah perintah. Ganti ke `spf13/cobra` bila perintah mulai bertingkat (`jaga user add`, `jaga camera list`) atau butuh shell completion.
 - Output: `charmbracelet/lipgloss` untuk warna, `log/slog` dengan handler teks berwarna untuk TTY dan handler JSON untuk non-TTY.
 - Lokasi kode: `cmd/jaga/` hanya menangkap sinyal dan memanggil `cli.Run`, `internal/cli/` untuk tiap subcommand, `internal/config/` untuk `jaga.yml` + env, dan `internal/ui/term/` untuk palet dan simbol.
-- Belum ada (menyusul): `--no-color` dan banner berwarna (bersama `internal/ui/term`), versi go2rtc di `jaga version` (Fase 2).
+- Sudah ada: `start`, `migrate`, `version`, `probe`. Belum ada (menyusul): `init`, `doctor`, `camera`, `user`, `backup`, `--no-color` dan banner berwarna (bersama `internal/ui/term`), versi go2rtc di `jaga version` (Fase 2).
+
+### Contoh output `jaga probe`
+
+```
+$ jaga probe rtsp://admin:pass@192.168.0.60:554/stream1 --seconds 6
+✓ rtsp://***@192.168.0.60:554/stream1  (sampled 5.8s)
+  video  H264 1920×1080 25 fps  2.0 Mbps  keyframe 2.0s
+  audio  AAC 16000 Hz 1 ch  32 kbps
+```
+
+Default 5 detik sampling (`--seconds 1-60`). Password di URL selalu disamarkan, juga di pesan error (`404 Not Found`, `Connection refused`). Logikanya (`internal/probe`) sama dengan yang nanti dipakai `POST /cameras/{id}/test`.
 
 ## Lisensi & kepatuhan open source
 

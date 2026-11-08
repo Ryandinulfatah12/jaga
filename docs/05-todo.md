@@ -20,18 +20,18 @@ Estimasi total 7–10 minggu kerja part-time. Setiap fase menghasilkan sesuatu y
 
 ### Fase 1 — Fondasi recording (±2 minggu)
 
-- [ ] Kerangka CLI: `jaga start`, `jaga version`, `jaga migrate`, flag global, load `jaga.yml` + env `JAGA_*`
-- [ ] Migrasi awal: `users`, `cameras`, `segments`, `events`, `settings`
-- [ ] Service CRUD kamera + enkripsi URL
-- [ ] Endpoint `POST /cameras/{id}/test` via ffprobe (logika yang sama dipakai `jaga probe`)
-- [ ] Validasi URL kamera (skema `rtsp`/`rtsps` saja) + unit test untuk input jahat (`file:`, `exec:`, `-i`, newline)
-- [ ] Builder argumen FFmpeg recording (copy, segment, fragmented MP4)
-- [ ] Supervisor: spawn, baca segment list dari stdout, insert `segments`
-- [ ] Deteksi stall via `-progress` + backoff eksponensial
-- [ ] Graceful shutdown (SIGINT ke semua FFmpeg, tunggu segmen tertutup)
-- [ ] Job retensi berbasis hari + kuota disk
-- [ ] Rekonsiliasi saat startup: file di disk tanpa baris DB (dan sebaliknya)
-- [ ] Uji: cabut kabel kamera 5 menit → recording lanjut otomatis tanpa intervensi
+- [x] Kerangka CLI: `jaga start`, `jaga version`, `jaga migrate`, flag global, load `jaga.yml` + env `JAGA_*` (PR #2; parsing pakai package `flag`, belum cobra)
+- [x] Migrasi awal: `users`, `cameras`, `segments`, `events`, `settings` (PR #3, plus `sessions`, `notifiers`)
+- [x] Service CRUD kamera + enkripsi URL (PR #3, AES-256-GCM, key HKDF dari `secret_key`)
+- [ ] Endpoint `POST /cameras/{id}/test` via ffprobe (logika yang sama dipakai `jaga probe`). Logika probe + `jaga probe <url>` sudah ada (`internal/probe`); endpoint HTTP-nya menunggu router di Fase 2
+- [x] Validasi URL kamera (skema `rtsp`/`rtsps` saja) + unit test untuk input jahat (`file:`, `exec:`, `-i`, newline) (PR #3, plus fuzz test)
+- [x] Builder argumen FFmpeg recording (copy, segment, fragmented MP4) (PR #4)
+- [x] Supervisor: spawn, baca segment list dari stdout, insert `segments` (PR #4)
+- [x] Deteksi stall via `-progress` + backoff eksponensial (event `offline`/online)
+- [x] Graceful shutdown (SIGINT ke semua FFmpeg, tunggu segmen tertutup)
+- [x] Job retensi berbasis hari + kuota disk (event `disk_full`)
+- [x] Rekonsiliasi saat startup: file di disk tanpa baris DB (dan sebaliknya)
+- [x] Uji: cabut kabel kamera 5 menit → recording lanjut otomatis tanpa intervensi (7 Nov 2026, simulasi: network container `jaga` diputus 5 menit dengan kamera mediamtx; backoff 2 s → 60 s, event `offline` 298 s, rekaman lanjut 15 s setelah kabel dipasang. Ulangi dengan kamera fisik sebelum Fase 5)
 
 ### Fase 2 — API, auth & live view (±1–2 minggu)
 

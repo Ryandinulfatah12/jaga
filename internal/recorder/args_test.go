@@ -24,7 +24,8 @@ func TestBuild(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []string{
-		"-nostdin", "-hide_banner", "-loglevel", "warning",
+		"-nostdin", "-hide_banner", "-nostats", "-loglevel", "warning",
+		"-progress", "pipe:3",
 		"-protocol_whitelist", "rtsp,rtsps,rtp,udp,tcp,tls",
 		"-rtsp_transport", "tcp", "-timeout", "5000000",
 		"-i", "rtsp://admin:pass@192.168.0.60:554/stream1",
@@ -105,5 +106,14 @@ func TestBuildRejects(t *testing.T) {
 func TestDir(t *testing.T) {
 	if got := Dir("/data", 12); got != "/data/recordings/12" {
 		t.Errorf("Dir = %q", got)
+	}
+}
+
+func TestFFprobePath(t *testing.T) {
+	if got := FFprobePath("/usr/bin/ffmpeg"); got != "/usr/bin/ffprobe" {
+		t.Errorf("FFprobePath = %q", got)
+	}
+	if got := FFprobePath("ffmpeg"); got != "ffprobe" {
+		t.Errorf("FFprobePath bare = %q", got)
 	}
 }
