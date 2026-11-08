@@ -7,12 +7,16 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/ryandinulfatah12/jaga/internal/camera"
+	"github.com/ryandinulfatah12/jaga/internal/config"
 )
 
 const testSecret = "0123456789abcdef0123456789abcdef"
@@ -195,4 +199,117 @@ func TestUserAddAndPasswd(t *testing.T) {
 	if code, _ := user("second-pass\n", "passwd", "nobody"); code != exitError {
 		t.Errorf("passwd unknown user: %d", code)
 	}
+}
+
+func TestInitThenDoctor(t *testing.T) {
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(t.TempDir())
+	t.Cleanup(func() { stdin = os.Stdin })
+	data := filepath.Join(t.TempDir(), "rec")
+	env := map[string]string{
+		"JAGA_FFMPEG_PATH": "definitely-not-ffmpeg", "JAGA_GO2RTC_PATH": "definitely-not-go2rtc",
+		"JAGA_LISTEN": "127.0.0.1:" + freePort(t), "JAGA_GO2RTC_API": "127.0.0.1:" + freePort(t), "JAGA_GO2RTC_WEBRTC_PORT": freePort(t),
+	}
+	lookup := func(k string) (string, bool) { v, ok := env[k]; return v, ok }
+	cli := func(input string, args ...string) (int, string, string) {
+		stdin = strings.NewReader(input)
+		var out, errb bytes.Buffer
+		code := Run(t.Context(), args, &out, &errb, lookup)
+		return code, out.String(), errb.String()
+	}
+
+	// Before init: no secret, no database.
+	code, out, _ := cli("", "doctor")
+	if code != exitConfig || !strings.Contains(out, "✗ secret_key") || !strings.Contains(out, "✗ database") || !strings.Contains(out, "jaga init") {
+		t.Errorf("doctor before init: exit %d\n%s", code, out)
+	}
+
+	if code, _, errb := cli("short\n", "init", "--data-dir", data); code != exitError || !strings.Contains(errb, "8-128") {
+		t.Errorf("init with short password: exit %d %s", code, errb)
+	}
+	if _, err := os.Stat("jaga.yml"); err == nil {
+		t.Fatal("a rejected init left jaga.yml behind")
+	}
+	if code, _, errb := cli("long-enough\n", "init", "--admin", "has space"); code != exitError || !strings.Contains(errb, "--admin") {
+		t.Errorf("init with bad admin name: exit %d %s", code, errb)
+	}
+	code, out, errb := cli("long-enough\n", "init", "--data-dir", data, "--admin", "ryan")
+	if code != exitOK || !strings.Contains(out, `admin "ryan" created`) {
+		t.Fatalf("init: exit %d\n%s%s", code, out, errb)
+	}
+	fi, err := os.Stat("jaga.yml")
+	if err != nil || fi.Mode().Perm() != 0o600 {
+		t.Fatalf("jaga.yml mode = %v %v", fi.Mode().Perm(), err)
+	}
+	b, _ := os.ReadFile("jaga.yml")
+	if strings.Contains(string(b), "long-enough") {
+		t.Error("password written to jaga.yml")
+	}
+	// The written file loads, and the secret is good enough for the sealer.
+	cfg, _, err := config.Load("jaga.yml", func(string) (string, bool) { return "", false })
+	if err != nil || len(cfg.SecretKey) < camera.MinSecretLen || cfg.DataDir != data {
+		t.Fatalf("config after init = %+v %v", cfg, err)
+	}
+	if code, _, errb := cli("long-enough\n", "init"); code != exitError || !strings.Contains(errb, "already exists") {
+		t.Errorf("second init: exit %d %s", code, errb)
+	}
+	if b2, _ := os.ReadFile("jaga.yml"); string(b2) != string(b) {
+		t.Error("second init changed jaga.yml")
+	}
+
+	// After init, with a fake ffmpeg: only the missing go2rtc fails.
+	env["JAGA_FFMPEG_PATH"] = self
+	code, out, _ = cli("", "doctor")
+	for _, want := range []string{"✓ config", "✓ secret_key", "✓ data_dir", "writable", "✓ database", "admin present", "✗ go2rtc", "live view disabled", "✓ port"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("doctor after init lacks %q:\n%s", want, out)
+		}
+	}
+	if code != exitDeps {
+		t.Errorf("doctor exit %d, want %d (go2rtc missing)\n%s", code, exitDeps, out)
+	}
+	if strings.Contains(out, cfg.SecretKey) {
+		t.Error("doctor printed the secret")
+	}
+	if left, _ := filepath.Glob(filepath.Join(data, ".jaga-doctor-*")); len(left) != 0 {
+		t.Errorf("doctor left files: %v", left)
+	}
+}
+
+func TestDoctorPortInUse(t *testing.T) {
+	ln, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ln.Close() }()
+	c := portCheck(t.Context(), "tcp", ln.Addr().String(), "listen", "hint")
+	if c.ok || !strings.Contains(c.detail, "in use") {
+		t.Errorf("taken port = %+v", c)
+	}
+	if c := portCheck(t.Context(), "udp", "127.0.0.1:0", "webrtc", ""); !c.ok {
+		t.Errorf("free udp port = %+v", c)
+	}
+}
+
+func TestHumanBytes(t *testing.T) {
+	for n, want := range map[uint64]string{512: "512 B", 1500: "1.5 kB", 412_000_000_000: "412.0 GB", 2_000_000_000_000: "2.0 TB"} {
+		if got := humanBytes(n); got != want {
+			t.Errorf("humanBytes(%d) = %q, want %q", n, got, want)
+		}
+	}
+}
+
+// freePort returns a TCP port that was free a moment ago.
+func freePort(t *testing.T) string {
+	t.Helper()
+	ln, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ln.Close() }()
+	_, p, _ := net.SplitHostPort(ln.Addr().String())
+	return p
 }

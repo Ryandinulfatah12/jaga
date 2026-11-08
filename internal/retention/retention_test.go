@@ -257,9 +257,9 @@ func TestKeepsTodayAndTomorrowFolders(t *testing.T) {
 }
 
 func TestStatfs(t *testing.T) {
-	used, avail, err := statfs(t.TempDir())
+	used, avail, err := DiskUsage(t.TempDir())
 	if err != nil || used == 0 || avail == 0 {
-		t.Errorf("statfs = %d, %d, %v", used, avail, err)
+		t.Errorf("DiskUsage = %d, %d, %v", used, avail, err)
 	}
 }
 

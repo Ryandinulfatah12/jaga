@@ -35,7 +35,7 @@ type Job struct {
 	Log          *slog.Logger
 
 	// DiskUsage reports used and available bytes of the filesystem holding
-	// path, like df. Defaults to statfs. Replaced in tests.
+	// path, like df. Defaults to DiskUsage. Replaced in tests.
 	DiskUsage func(path string) (used, avail uint64, err error)
 	// Now defaults to time.Now. Replaced in tests.
 	Now func() time.Time
@@ -257,12 +257,12 @@ func (j *Job) usage(path string) (used, avail uint64, err error) {
 	if j.DiskUsage != nil {
 		return j.DiskUsage(path)
 	}
-	return statfs(path)
+	return DiskUsage(path)
 }
 
-// statfs reports usage the way df does: used = total - free, avail = space
-// available to unprivileged users.
-func statfs(path string) (used, avail uint64, err error) {
+// DiskUsage reports usage of the filesystem holding path the way df does:
+// used = total - free, avail = space available to unprivileged users.
+func DiskUsage(path string) (used, avail uint64, err error) {
 	var st syscall.Statfs_t
 	if err := syscall.Statfs(path, &st); err != nil {
 		return 0, 0, err
