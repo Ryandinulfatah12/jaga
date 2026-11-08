@@ -491,7 +491,4 @@ func TestHelpers(t *testing.T) {
 	if d := csvDuration([]string{"a.mp4", "x"}); d != 0 {
 		t.Errorf("csvDuration short = %v", d)
 	}
-	if got := maskCredentials("rtsp://admin:hunter2@cam/s: 401 and rtsps://u@x/y"); got != "rtsp://***@cam/s: 401 and rtsps://***@x/y" {
-		t.Errorf("maskCredentials = %q", got)
-	}
 }

@@ -20,6 +20,7 @@ import (
 	"github.com/ryandinulfatah12/jaga/internal/auth"
 	"github.com/ryandinulfatah12/jaga/internal/camera"
 	"github.com/ryandinulfatah12/jaga/internal/db"
+	"github.com/ryandinulfatah12/jaga/internal/live"
 	"github.com/ryandinulfatah12/jaga/internal/probe"
 	"github.com/ryandinulfatah12/jaga/migrations"
 )
@@ -303,5 +304,59 @@ func TestSecurityHeaders(t *testing.T) {
 		if resp.Header.Get(h) == "" {
 			t.Errorf("missing %s", h)
 		}
+	}
+}
+
+func TestLiveAndSnapshot(t *testing.T) {
+	var hits []string
+	g2r := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits = append(hits, r.URL.RequestURI())
+		w.Header().Set("Content-Type", "image/jpeg")
+		_, _ = io.WriteString(w, "JPEG")
+	}))
+	defer g2r.Close()
+
+	f := newFixture(t)
+	f.srv.Close()
+	f.s.Live = live.NewProxy(strings.TrimPrefix(g2r.URL, "http://"))
+	changed := 0
+	f.s.CamerasChanged = func() { changed++ }
+	f.srv = httptest.NewServer(f.s.Handler())
+	defer f.srv.Close()
+
+	admin := f.client(t, "admin", "admin-pass")
+	anon := f.client(t, "", "")
+	_, body := f.do(t, admin, "POST", "/api/v1/cameras", `{"name":"a","main_url":"rtsp://10.0.0.2/main","sub_url":"rtsp://10.0.0.2/sub"}`)
+	var cam cameraOut
+	_ = json.Unmarshal([]byte(body), &cam)
+	f.do(t, admin, "PATCH", fmt.Sprintf("/api/v1/cameras/%d", cam.ID), `{"enabled":true}`)
+	if changed != 2 {
+		t.Errorf("CamerasChanged called %d times, want 2", changed)
+	}
+	f.s.Live.SetStreams(map[string]int64{live.StreamName(cam.ID, false): cam.ID, live.StreamName(cam.ID, true): cam.ID})
+
+	snap := fmt.Sprintf("/api/v1/cameras/%d/snapshot", cam.ID)
+	if code, _ := f.do(t, anon, "GET", snap, ""); code != 401 {
+		t.Errorf("anon snapshot = %d", code)
+	}
+	if code, body := f.do(t, admin, "GET", snap, ""); code != 200 || body != "JPEG" {
+		t.Errorf("snapshot = %d %q", code, body)
+	}
+	if code, _ := f.do(t, admin, "GET", "/api/v1/cameras/999/snapshot", ""); code != 404 {
+		t.Errorf("unknown camera snapshot = %d", code)
+	}
+	src := live.StreamName(cam.ID, false)
+	if code, _ := f.do(t, anon, "GET", "/live/api/frame.jpeg?src="+src, ""); code != 401 {
+		t.Errorf("anon live = %d", code)
+	}
+	if code, _ := f.do(t, admin, "GET", "/live/api/frame.jpeg?src="+src, ""); code != 200 {
+		t.Errorf("live frame = %d", code)
+	}
+	if code, _ := f.do(t, admin, "GET", "/live/api/config", ""); code != 403 {
+		t.Errorf("/live/api/config = %d, want 403", code)
+	}
+	want := []string{"/api/frame.jpeg?src=cam1_sub", "/api/frame.jpeg?src=cam1"}
+	if strings.Join(hits, " ") != strings.Join(want, " ") {
+		t.Errorf("go2rtc saw %v, want %v", hits, want)
 	}
 }

@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net"
 	"os"
 	"reflect"
 	"strconv"
@@ -40,8 +41,12 @@ type Config struct {
 
 // Go2RTC configures the live-view sidecar.
 type Go2RTC struct {
-	Mode string `yaml:"mode"` // embedded | external
-	API  string `yaml:"api"`
+	Mode string `yaml:"mode"` // embedded (jaga spawns it) | external
+	// API is go2rtc's HTTP API. It can create exec: sources, so it must stay
+	// on loopback; Validate enforces that.
+	API        string `yaml:"api"`
+	Path       string `yaml:"path"`        // go2rtc binary, embedded mode
+	WebRTCPort int    `yaml:"webrtc_port"` // TCP and UDP, must be reachable by browsers
 }
 
 // Storage configures retention.
@@ -56,7 +61,7 @@ func Default() Config {
 		Listen:     ":8080",
 		DataDir:    "data",
 		FFmpegPath: "ffmpeg",
-		Go2RTC:     Go2RTC{Mode: "embedded", API: "127.0.0.1:1984"},
+		Go2RTC:     Go2RTC{Mode: "embedded", API: "127.0.0.1:1984", Path: "go2rtc", WebRTCPort: 8555},
 		Storage:    Storage{DiskQuotaPercent: 90, DefaultRetentionDays: 7},
 	}
 }
@@ -167,6 +172,12 @@ func (c Config) Validate() error {
 		return bad("ffmpeg_path is empty")
 	case c.Go2RTC.Mode != "embedded" && c.Go2RTC.Mode != "external":
 		return bad("go2rtc.mode is %q, want embedded or external", c.Go2RTC.Mode)
+	case !loopback(c.Go2RTC.API):
+		return bad("go2rtc.api is %q, want a loopback host:port such as 127.0.0.1:1984", c.Go2RTC.API)
+	case c.Go2RTC.Path == "":
+		return bad("go2rtc.path is empty")
+	case c.Go2RTC.WebRTCPort < 1 || c.Go2RTC.WebRTCPort > 65535:
+		return bad("go2rtc.webrtc_port is %d, want 1-65535", c.Go2RTC.WebRTCPort)
 	case c.Storage.DiskQuotaPercent < 1 || c.Storage.DiskQuotaPercent > 99:
 		return bad("storage.disk_quota_percent is %d, want 1-99", c.Storage.DiskQuotaPercent)
 	case c.Storage.DefaultRetentionDays < 1:
@@ -176,4 +187,17 @@ func (c Config) Validate() error {
 		return bad("secret_key is a literal %q; set JAGA_SECRET_KEY instead", c.SecretKey)
 	}
 	return nil
+}
+
+// loopback reports whether addr is host:port with a loopback IP or localhost.
+func loopback(addr string) bool {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil || port == "" {
+		return false
+	}
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }

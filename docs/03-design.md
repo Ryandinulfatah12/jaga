@@ -89,13 +89,14 @@ Argumen dibangun sebagai slice oleh `internal/recorder` (`recorder.Build`) dan d
 | GET | `/ws` | WebSocket push status kamera & event realtime |
 | ANY | `/live/*` | reverse proxy ke go2rtc (WebRTC/MSE), dicek sesi |
 
-Sudah ada: `/auth/*`, `/cameras` (GET/POST), `/cameras/{id}` (GET/PATCH/DELETE), `/cameras/{id}/test`. Role `viewer` hanya boleh GET; tulis dan test kamera khusus `admin`. URL kamera di response selalu dimasking (`rtsp://***@host/...`). Error berbentuk `{"error": "..."}`.
+Sudah ada: `/auth/*`, `/cameras` (GET/POST), `/cameras/{id}` (GET/PATCH/DELETE), `/cameras/{id}/test`, `/cameras/{id}/snapshot` (502 bila kamera tidak terjangkau), `/live/*`. Role `viewer` hanya boleh GET; tulis dan test kamera khusus `admin`. URL kamera di response selalu dimasking (`rtsp://***@host/...`). Error berbentuk `{"error": "..."}`.
 
 ### Keamanan
 
 - Semua endpoint, termasuk proxy live, wajib sesi valid.
 - **go2rtc dikunci.** API hanya listen di `127.0.0.1` (atau unix socket bila tersedia). Server RTSP bawaannya (`:8554`) dimatikan, sehingga yang terbuka hanya port media WebRTC. Ini krusial karena API go2rtc bisa membuat source `exec:` yang menjalankan perintah arbitrer.
-- **Proxy `/live/*` memakai whitelist.** Yang diteruskan hanya signaling WebRTC/MSE dan `frame.jpeg` untuk nama stream milik kamera yang boleh diakses user tersebut. Endpoint `/api/config`, `/api/streams` (tulis), dan lainnya selalu ditolak.
+- **Proxy `/live/*` memakai whitelist.** Yang diteruskan hanya `GET /api/ws` (MSE/WebRTC via WebSocket), `POST /api/webrtc`, dan `GET /api/frame.jpeg`, dengan query dibangun ulang (hanya `src`, dan hanya nama stream kamera yang aktif). Endpoint lain, termasuk `/api/config` dan `/api/streams`, selalu 403. Origin diperiksa juga untuk GET (upgrade WebSocket), Cookie sesi Jaga tidak diteruskan, dan header CORS go2rtc dibuang.
+- **Config go2rtc tanpa kredensial.** Nama stream `cam<ID>` dan `cam<ID>_sub`. Nilai stream di `data_dir/go2rtc.yaml` (mode 0600) hanya `${JAGA_CAM_n}`, URL aslinya diberikan lewat environment proses go2rtc, sehingga URL tidak pernah ditulis ke disk dan tidak bisa dibaca sebagai prefix source go2rtc (`exec:`, `ffmpeg:`). Environment go2rtc hanya `PATH`, `HOME`, `TZ`, dan `JAGA_CAM_n` (tanpa `JAGA_SECRET_KEY`). `go2rtc.api` di `jaga.yml` wajib loopback.
 - **Validasi URL kamera.**
   - Skema hanya `rtsp`/`rtsps`, di-parse dengan `net/url`.
   - Tolak spasi, newline, `#`, dan URL yang diawali `-`.

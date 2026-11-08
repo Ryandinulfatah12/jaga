@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ryandinulfatah12/jaga/internal/camera"
+	"github.com/ryandinulfatah12/jaga/internal/live"
 	"github.com/ryandinulfatah12/jaga/internal/probe"
 )
 
@@ -154,12 +155,14 @@ func (s *Server) createCamera(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.Log.Info("camera created", "id", c.ID, "name", c.Name, "by", currentUser(r).Username)
+	s.changed()
 	writeJSON(w, http.StatusCreated, out(c))
 }
 
 // patchCamera changes only the fields present in the body.
-// ponytail: the recorder picks the change up on the next `jaga start`;
-// live reload of the supervisor comes with the WebSocket status hub.
+// ponytail: live view reloads at once (CamerasChanged); the recorder picks
+// the change up on the next `jaga start`, supervisor reload comes with the
+// WebSocket status hub.
 func (s *Server) patchCamera(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(w, r)
 	if !ok {
@@ -183,6 +186,7 @@ func (s *Server) patchCamera(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.Log.Info("camera updated", "id", c.ID, "by", currentUser(r).Username)
+	s.changed()
 	writeJSON(w, http.StatusOK, out(c))
 }
 
@@ -196,6 +200,7 @@ func (s *Server) deleteCamera(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.Log.Info("camera deleted", "id", id, "by", currentUser(r).Username)
+	s.changed()
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -229,4 +234,35 @@ func (s *Server) testCamera(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "streams": res.Streams, "sampled_sec": res.Sampled.Seconds()})
+}
+
+func (s *Server) changed() {
+	if s.CamerasChanged != nil {
+		s.CamerasChanged()
+	}
+}
+
+// snapshot returns the latest JPEG of a camera, from its sub stream when it
+// has one (smaller, and usually H.264 even when main is H.265).
+func (s *Server) snapshot(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	if s.Live == nil {
+		writeError(w, http.StatusServiceUnavailable, "live view is disabled")
+		return
+	}
+	src := live.StreamName(id, true)
+	if !s.Live.HasStream(src) {
+		src = live.StreamName(id, false)
+	}
+	if !s.Live.HasStream(src) {
+		writeError(w, http.StatusNotFound, "camera not found or disabled")
+		return
+	}
+	r2 := r.Clone(r.Context())
+	r2.URL.Path = "/live/api/frame.jpeg"
+	r2.URL.RawQuery = "src=" + src
+	s.Live.ServeHTTP(w, r2)
 }

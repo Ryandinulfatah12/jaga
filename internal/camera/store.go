@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 	"unicode"
@@ -104,6 +105,13 @@ func (c Camera) Validate() error {
 	}
 	return nil
 }
+
+// userinfo matches the credentials of any URL in free text. Greedy up to the
+// last "@" before the path, so a password with a raw "@" is masked whole.
+var userinfo = regexp.MustCompile(`(://)[^/\s"']*@`)
+
+// MaskText hides URL credentials anywhere in s, e.g. an FFmpeg or go2rtc log line.
+func MaskText(s string) string { return userinfo.ReplaceAllString(s, "${1}***@") }
 
 // MaskURL hides the credentials in a camera URL for the API and logs.
 func MaskURL(raw string) string {

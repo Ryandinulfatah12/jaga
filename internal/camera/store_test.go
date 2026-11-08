@@ -194,3 +194,11 @@ func TestMaskURL(t *testing.T) {
 		}
 	}
 }
+
+func TestMaskText(t *testing.T) {
+	in := `ERR url=rtsp://admin:p@ss@10.0.0.2/s: 401 and other="rtsps://u@h:322/x" plain=rtsp://h/s`
+	want := `ERR url=rtsp://***@10.0.0.2/s: 401 and other="rtsps://***@h:322/x" plain=rtsp://h/s`
+	if got := MaskText(in); got != want {
+		t.Errorf("got  %s\nwant %s", got, want)
+	}
+}

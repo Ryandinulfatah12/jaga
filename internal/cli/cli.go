@@ -28,6 +28,7 @@ import (
 	"github.com/ryandinulfatah12/jaga/internal/camera"
 	"github.com/ryandinulfatah12/jaga/internal/config"
 	"github.com/ryandinulfatah12/jaga/internal/db"
+	"github.com/ryandinulfatah12/jaga/internal/live"
 	"github.com/ryandinulfatah12/jaga/internal/probe"
 	"github.com/ryandinulfatah12/jaga/internal/recorder"
 	"github.com/ryandinulfatah12/jaga/internal/retention"
@@ -300,8 +301,14 @@ func (e *env) start() int {
 		e.log.Error("listen", "addr", cfg.Listen, "err", err)
 		return exitError
 	}
+	lv := e.liveView(cfg, all)
+	apiSrv := &api.Server{Auth: users, Cameras: cams, Log: e.log, FFprobe: recorder.FFprobePath(ffmpeg)}
+	if lv != nil {
+		apiSrv.Live = lv.proxy
+		apiSrv.CamerasChanged = lv.changed(e.ctx, cams)
+	}
 	srv := &http.Server{
-		Handler:           (&api.Server{Auth: users, Cameras: cams, Log: e.log, FFprobe: recorder.FFprobePath(ffmpeg)}).Handler(),
+		Handler:           apiSrv.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 		ErrorLog:          slog.NewLogLogger(e.log.Handler(), slog.LevelWarn),
 	}
@@ -310,6 +317,9 @@ func (e *env) start() int {
 		"cameras", len(all), "recording", len(rec))
 	var wg sync.WaitGroup
 	wg.Go(func() { ret.Run(e.ctx) })
+	if lv != nil && lv.proc != nil {
+		wg.Go(func() { lv.proc.Run(e.ctx, lv.first, lv.reload) })
+	}
 	wg.Go(func() {
 		if err := srv.Serve(ln); !errors.Is(err, http.ErrServerClosed) {
 			e.log.Error("http", "err", err)
@@ -325,6 +335,68 @@ func (e *env) start() int {
 	wg.Wait()
 	e.log.Info("shutting down")
 	return exitOK
+}
+
+// liveState wires go2rtc into start.
+type liveState struct {
+	proxy  *live.Proxy
+	proc   *live.Process // nil in external mode
+	first  live.Config
+	reload chan live.Config
+	cfg    config.Config
+	log    *slog.Logger
+}
+
+// liveView returns nil when live view cannot run. That only disables live
+// view and snapshots, never recording.
+func (e *env) liveView(cfg config.Config, cams []camera.Camera) *liveState {
+	lc, err := live.BuildConfig(cfg.Go2RTC.API, cfg.Go2RTC.WebRTCPort, cams)
+	if err != nil {
+		e.log.Error("live view disabled: go2rtc config", "err", err)
+		return nil
+	}
+	lv := &liveState{proxy: live.NewProxy(cfg.Go2RTC.API), first: lc, reload: make(chan live.Config, 1), cfg: cfg, log: e.log}
+	lv.proxy.SetStreams(lc.Streams)
+	if cfg.Go2RTC.Mode == "external" {
+		// ponytail: external go2rtc keeps its own config; stream names must
+		// follow live.StreamName (cam<ID>, cam<ID>_sub). Push config through
+		// its API if users ask for it.
+		e.log.Info("live view via external go2rtc", "api", cfg.Go2RTC.API)
+		return lv
+	}
+	path, err := exec.LookPath(cfg.Go2RTC.Path)
+	if err != nil {
+		e.log.Warn("live view disabled: go2rtc not found, install it or set go2rtc.path", "go2rtc_path", cfg.Go2RTC.Path)
+		return nil
+	}
+	lv.proc = &live.Process{Path: path, Dir: cfg.DataDir, Log: e.log}
+	return lv
+}
+
+// changed rebuilds the go2rtc config from the store and hands it over.
+// The newest config wins if one is still pending.
+func (lv *liveState) changed(ctx context.Context, cams *camera.Store) func() {
+	return func() {
+		all, err := cams.List(ctx)
+		if err != nil {
+			lv.log.Error("live view reload", "err", err)
+			return
+		}
+		lc, err := live.BuildConfig(lv.cfg.Go2RTC.API, lv.cfg.Go2RTC.WebRTCPort, all)
+		if err != nil {
+			lv.log.Error("live view reload", "err", err)
+			return
+		}
+		lv.proxy.SetStreams(lc.Streams)
+		if lv.proc == nil {
+			return
+		}
+		select {
+		case <-lv.reload: // drop the stale pending config
+		default:
+		}
+		lv.reload <- lc
+	}
 }
 
 // user adds a user or resets a password. The password is read from stdin,

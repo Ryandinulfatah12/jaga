@@ -16,7 +16,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -271,11 +270,11 @@ func (s *Supervisor) record(ctx context.Context, c camera.Camera, rc recorder.Co
 	}
 	switch {
 	case err == nil && last != "": // exit 0, e.g. RTSP -timeout or end of stream
-		err = errors.New(maskCredentials(last))
+		err = errors.New(camera.MaskText(last))
 	case err == nil:
 		err = errors.New("ffmpeg exited")
 	case last != "":
-		err = fmt.Errorf("%w: %s", err, maskCredentials(last))
+		err = fmt.Errorf("%w: %s", err, camera.MaskText(last))
 	}
 	return result{err: err, running: running}
 }
@@ -438,11 +437,4 @@ func lastLine(r io.Reader) string {
 		}
 	}
 	return last
-}
-
-// FFmpeg error messages can quote the input URL, password included.
-var userinfo = regexp.MustCompile(`(://)[^/@\s]+@`)
-
-func maskCredentials(s string) string {
-	return userinfo.ReplaceAllString(s, "${1}***@")
 }

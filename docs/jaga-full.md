@@ -174,13 +174,14 @@ Argumen dibangun sebagai slice oleh `internal/recorder` (`recorder.Build`) dan d
 | GET | `/ws` | WebSocket push status kamera & event realtime |
 | ANY | `/live/*` | reverse proxy ke go2rtc (WebRTC/MSE), dicek sesi |
 
-Sudah ada: `/auth/*`, `/cameras` (GET/POST), `/cameras/{id}` (GET/PATCH/DELETE), `/cameras/{id}/test`. Role `viewer` hanya boleh GET; tulis dan test kamera khusus `admin`. URL kamera di response selalu dimasking (`rtsp://***@host/...`). Error berbentuk `{"error": "..."}`.
+Sudah ada: `/auth/*`, `/cameras` (GET/POST), `/cameras/{id}` (GET/PATCH/DELETE), `/cameras/{id}/test`, `/cameras/{id}/snapshot` (502 bila kamera tidak terjangkau), `/live/*`. Role `viewer` hanya boleh GET; tulis dan test kamera khusus `admin`. URL kamera di response selalu dimasking (`rtsp://***@host/...`). Error berbentuk `{"error": "..."}`.
 
 ### Keamanan
 
 - Semua endpoint, termasuk proxy live, wajib sesi valid.
 - **go2rtc dikunci.** API hanya listen di `127.0.0.1` (atau unix socket bila tersedia). Server RTSP bawaannya (`:8554`) dimatikan, sehingga yang terbuka hanya port media WebRTC. Ini krusial karena API go2rtc bisa membuat source `exec:` yang menjalankan perintah arbitrer.
-- **Proxy `/live/*` memakai whitelist.** Yang diteruskan hanya signaling WebRTC/MSE dan `frame.jpeg` untuk nama stream milik kamera yang boleh diakses user tersebut. Endpoint `/api/config`, `/api/streams` (tulis), dan lainnya selalu ditolak.
+- **Proxy `/live/*` memakai whitelist.** Yang diteruskan hanya `GET /api/ws` (MSE/WebRTC via WebSocket), `POST /api/webrtc`, dan `GET /api/frame.jpeg`, dengan query dibangun ulang (hanya `src`, dan hanya nama stream kamera yang aktif). Endpoint lain, termasuk `/api/config` dan `/api/streams`, selalu 403. Origin diperiksa juga untuk GET (upgrade WebSocket), Cookie sesi Jaga tidak diteruskan, dan header CORS go2rtc dibuang.
+- **Config go2rtc tanpa kredensial.** Nama stream `cam<ID>` dan `cam<ID>_sub`. Nilai stream di `data_dir/go2rtc.yaml` (mode 0600) hanya `${JAGA_CAM_n}`, URL aslinya diberikan lewat environment proses go2rtc, sehingga URL tidak pernah ditulis ke disk dan tidak bisa dibaca sebagai prefix source go2rtc (`exec:`, `ffmpeg:`). Environment go2rtc hanya `PATH`, `HOME`, `TZ`, dan `JAGA_CAM_n` (tanpa `JAGA_SECRET_KEY`). `go2rtc.api` di `jaga.yml` wajib loopback.
 - **Validasi URL kamera.**
   - Skema hanya `rtsp`/`rtsps`, di-parse dengan `net/url`.
   - Tolak spasi, newline, `#`, dan URL yang diawali `-`.
@@ -238,8 +239,10 @@ listen: ":8080"
 data_dir: /data
 ffmpeg_path: ffmpeg
 go2rtc:
-  mode: embedded      # embedded = spawn binary bawaan | external
-  api: 127.0.0.1:1984
+  mode: embedded      # embedded = jaga menjalankan go2rtc | external
+  api: 127.0.0.1:1984 # wajib loopback: API go2rtc bisa menjalankan perintah
+  path: go2rtc        # binary go2rtc (mode embedded)
+  webrtc_port: 8555   # TCP+UDP, harus bisa dijangkau browser
 storage:
   disk_quota_percent: 90
   default_retention_days: 7
@@ -305,9 +308,9 @@ Estimasi total 7–10 minggu kerja part-time. Setiap fase menghasilkan sesuatu y
 - [x] Router `net/http` (stdlib, tanpa chi), middleware sesi, login/logout, rate limit, CSRF via `http.CrossOriginProtection` (stdlib), plus CRUD `/cameras`
 - [ ] `jaga init` (wizard config + admin pertama) dan `jaga user add|passwd`. `jaga user add|passwd` sudah ada (password dari stdin, tanpa echo di terminal); `jaga init` belum
 - [ ] `jaga doctor`: cek ffmpeg, go2rtc, izin `data_dir`, disk, port
-- [ ] Integrasi go2rtc: generate config lewat YAML marshaller, API hanya `127.0.0.1`, RTSP server go2rtc mati, reload saat berubah
-- [ ] Reverse proxy `/live/*` dengan cek sesi + whitelist path & nama stream (test: `/live/api/config` harus 403)
-- [ ] Snapshot terbaru per kamera (ambil dari go2rtc `frame.jpeg`)
+- [x] Integrasi go2rtc: generate config lewat YAML marshaller, API hanya `127.0.0.1`, RTSP server go2rtc mati, reload saat berubah (URL kamera lewat env `JAGA_CAM_n`, tidak ditulis ke file)
+- [x] Reverse proxy `/live/*` dengan cek sesi + whitelist path & nama stream (test: `/live/api/config` harus 403)
+- [x] Snapshot terbaru per kamera (ambil dari go2rtc `frame.jpeg`, sub-stream bila ada)
 - [ ] Hub WebSocket untuk status kamera realtime
 
 ### Fase 3 — Frontend (±2 minggu)
