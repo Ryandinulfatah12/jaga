@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: Apache-2.0
+.git
+bin
+dist
+data
+web/node_modules
+web/dist
+.sim
+*.db
+*.db-wal
+*.db-shm
+jaga.yml
+.env

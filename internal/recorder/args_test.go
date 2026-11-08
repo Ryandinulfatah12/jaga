@@ -30,7 +30,7 @@ func TestBuild(t *testing.T) {
 		"-rtsp_transport", "tcp", "-timeout", "5000000",
 		"-i", "rtsp://admin:pass@192.168.0.60:554/stream1",
 		"-map", "0:v",
-		"-c", "copy",
+		"-c:v", "copy",
 		"-f", "segment",
 		"-segment_time", "600",
 		"-segment_format", "mp4",
@@ -57,11 +57,11 @@ func TestBuildAudioAndSegment(t *testing.T) {
 		t.Fatal(err)
 	}
 	joined := strings.Join(cmd.Args, " ")
-	if !strings.Contains(joined, "-map 0:v -map 0:a? -c copy") || !strings.Contains(joined, "-segment_time 300") {
+	if !strings.Contains(joined, "-map 0:v -map 0:a? -c:v copy -c:a aac -b:a 64k") || !strings.Contains(joined, "-segment_time 300") {
 		t.Errorf("args: %s", joined)
 	}
-	// Audio and video are both copied: never a transcode.
-	if strings.Contains(joined, "-c:a") || strings.Contains(joined, "aac") || strings.Contains(joined, "-preset") {
+	// Video is never transcoded; only audio is re-encoded (G.711 cannot go into MP4).
+	if strings.Contains(joined, "-c:v libx") || strings.Contains(joined, "-preset") || strings.Contains(joined, "-c copy") {
 		t.Errorf("unexpected codec options: %s", joined)
 	}
 }

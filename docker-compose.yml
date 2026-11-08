@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright The Jaga Authors
+#
+# docker compose up -d --build
+# First run: put JAGA_SECRET_KEY in .env (openssl rand -base64 32, back it
+# up: camera URLs are encrypted with it), then create the admin:
+#   docker compose run --rm jaga user add <name>
+
+services:
+  jaga:
+    build: .
+    image: jaga:local
+    container_name: jaga
+    # Host network: RTSP to the cameras and WebRTC to browsers without Docker NAT.
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      JAGA_SECRET_KEY: ${JAGA_SECRET_KEY:?set JAGA_SECRET_KEY in .env}
+      JAGA_LISTEN: ${JAGA_LISTEN:-:8080}
+      TZ: ${TZ:-Asia/Jakarta}
+    volumes:
+      - ${JAGA_DATA:-./data}:/data
+    # Runs as this uid; it must own the data directory on the host
+    # (exFAT/NTFS mounts: the uid= mount option decides).
+    user: ${JAGA_UID:-1000}:${JAGA_GID:-1000}

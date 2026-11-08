@@ -67,8 +67,16 @@ func Build(ffmpegPath, dataDir string, c camera.Camera) (Command, error) {
 	if c.RecordAudio {
 		args = append(args, "-map", "0:a?") // '?': cameras without audio still record
 	}
+	args = append(args, "-c:v", "copy")
+	if c.RecordAudio {
+		// Cameras send G.711 (Tapo, Hikvision, Dahua) or AAC. MP4 cannot hold
+		// G.711, so audio is re-encoded to AAC: a few % of one core per
+		// camera. Video is never transcoded.
+		// ponytail: AAC sources get re-encoded too; probe and copy them if
+		// the CPU cost ever matters.
+		args = append(args, "-c:a", "aac", "-b:a", "64k")
+	}
 	args = append(args,
-		"-c", "copy",
 		"-f", "segment",
 		"-segment_time", strconv.Itoa(c.SegmentSec),
 		"-segment_format", "mp4",

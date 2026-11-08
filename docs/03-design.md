@@ -34,7 +34,7 @@ Folder per tanggal membuat retensi cukup dengan menghapus folder lama, lalu meng
 ffmpeg -nostdin -hide_banner -nostats -loglevel warning -progress pipe:3 \
   -protocol_whitelist rtsp,rtsps,rtp,udp,tcp,tls \
   -rtsp_transport tcp -timeout 5000000 -i <main_url> \
-  -map 0:v [-map 0:a?  # hanya jika record_audio] -c copy \
+  -map 0:v -c:v copy [-map 0:a? -c:a aac -b:a 64k  # hanya jika record_audio] \
   -f segment -segment_time 600 -segment_format mp4 \
   -segment_format_options movflags=+frag_keyframe+empty_moov \
   -reset_timestamps 1 -strftime 1 \
@@ -42,7 +42,7 @@ ffmpeg -nostdin -hide_banner -nostats -loglevel warning -progress pipe:3 \
   /data/recordings/<id>/%Y-%m-%d/%Y%m%d-%H%M%S.mp4   # env TZ=UTC
 ```
 
-Argumen dibangun sebagai slice oleh `internal/recorder` (`recorder.Build`) dan dijalankan dengan `exec.Command` tanpa shell. URL divalidasi ulang di sana dan selalu menjadi satu argumen tepat setelah `-i`. `-loglevel warning` tetap menampilkan error koneksi (`Connection refused`, `404`) yang dibaca supervisor sebagai alasan restart. `-protocol_whitelist` mencegah URL seperti `file:` atau `concat:` dipakai untuk membaca file lokal. `-segment_list pipe:1` membuat FFmpeg menulis nama setiap segmen yang selesai ke stdout. Supervisor membacanya lalu meng-insert baris `segments` tanpa perlu polling filesystem. `end_ts` adalah waktu baris itu diterima dan `start_ts = end_ts − durasi` dari `ffprobe` file tersebut. Nama file tidak dipakai sebagai sumber waktu karena segmen pertama bisa telat ±3 s (FFmpeg baru membuka file setelah probing input), dan kolom start/end di CSV memuat offset timestamp kamera. Fragmented MP4 membuat file sering masih bisa diputar walau proses di-kill di tengah segmen, tetapi segmen itu tidak masuk list dan kadang rusak total. Karena itu rekonsiliasi saat startup dan setiap job retensi memeriksa file tanpa baris DB dengan `ffprobe`: file yang terbaca di-insert (`end_ts` = mtime), file rusak dihapus.
+Video selalu di-copy. Audio (bila `record_audio`) di-encode ke AAC karena kamera umumnya mengirim G.711 (Tapo, Hikvision, Dahua) yang tidak bisa masuk MP4; biayanya beberapa persen satu core per kamera. Argumen dibangun sebagai slice oleh `internal/recorder` (`recorder.Build`) dan dijalankan dengan `exec.Command` tanpa shell. URL divalidasi ulang di sana dan selalu menjadi satu argumen tepat setelah `-i`. `-loglevel warning` tetap menampilkan error koneksi (`Connection refused`, `404`) yang dibaca supervisor sebagai alasan restart. `-protocol_whitelist` mencegah URL seperti `file:` atau `concat:` dipakai untuk membaca file lokal. `-segment_list pipe:1` membuat FFmpeg menulis nama setiap segmen yang selesai ke stdout. Supervisor membacanya lalu meng-insert baris `segments` tanpa perlu polling filesystem. `end_ts` adalah waktu baris itu diterima dan `start_ts = end_ts − durasi` dari `ffprobe` file tersebut. Nama file tidak dipakai sebagai sumber waktu karena segmen pertama bisa telat ±3 s (FFmpeg baru membuka file setelah probing input), dan kolom start/end di CSV memuat offset timestamp kamera. Fragmented MP4 membuat file sering masih bisa diputar walau proses di-kill di tengah segmen, tetapi segmen itu tidak masuk list dan kadang rusak total. Karena itu rekonsiliasi saat startup dan setiap job retensi memeriksa file tanpa baris DB dengan `ffprobe`: file yang terbaca di-insert (`end_ts` = mtime), file rusak dihapus.
 
 ### State machine supervisor (per kamera)
 
