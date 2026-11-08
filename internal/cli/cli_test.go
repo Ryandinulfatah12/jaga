@@ -80,6 +80,11 @@ func TestExitCodes(t *testing.T) {
 		{"probe two urls", nil, []string{"probe", "rtsp://a/s", "rtsp://b/s"}, exitError},
 		{"probe bad seconds", nil, []string{"probe", "rtsp://a/s", "--seconds", "0"}, exitError},
 		{"probe missing ffmpeg", map[string]string{"JAGA_FFMPEG_PATH": "definitely-not-ffmpeg"}, []string{"probe", "rtsp://a/s"}, exitDeps},
+		{"user no action", nil, []string{"user"}, exitError},
+		{"user bad action", nil, []string{"user", "rm", "ryan"}, exitError},
+		{"user no name", nil, []string{"user", "add"}, exitError},
+		{"user bad role", nil, []string{"user", "add", "ryan", "--role", "root"}, exitError},
+		{"user bad name", nil, []string{"user", "add", "has space"}, exitError},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -97,12 +102,24 @@ func TestStartStopsOnCancel(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Chdir(t.TempDir())
+	env := map[string]string{"JAGA_FFMPEG_PATH": self, "JAGA_DATA_DIR": t.TempDir(), "JAGA_SECRET_KEY": testSecret, "JAGA_LISTEN": "127.0.0.1:0"}
+	lookup := func(k string) (string, bool) { v, ok := env[k]; return v, ok }
+
+	// No admin yet: start refuses (no default account).
+	var errb bytes.Buffer
+	if code := Run(t.Context(), []string{"start"}, io.Discard, &errb, lookup); code != exitConfig || !strings.Contains(errb.String(), "jaga user add") {
+		t.Fatalf("start without admin: exit %d\n%s", code, errb.String())
+	}
+	stdin = strings.NewReader("admin-pass\n")
+	t.Cleanup(func() { stdin = os.Stdin })
+	if code := Run(t.Context(), []string{"user", "add", "ryan"}, io.Discard, &errb, lookup); code != exitOK {
+		t.Fatalf("user add: exit %d\n%s", code, errb.String())
+	}
+
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	// Cancel once start logs "ready", so a slow runner cannot cancel too early.
 	logs := &readyWriter{ready: cancel}
-	env := map[string]string{"JAGA_FFMPEG_PATH": self, "JAGA_DATA_DIR": t.TempDir(), "JAGA_SECRET_KEY": testSecret}
-	lookup := func(k string) (string, bool) { v, ok := env[k]; return v, ok }
 
 	done := make(chan int, 1)
 	go func() { done <- Run(ctx, []string{"start"}, io.Discard, logs, lookup) }()
@@ -147,5 +164,35 @@ func TestProbeHidesPassword(t *testing.T) {
 	code, out, stderr := run(t, t.Context(), nil, "probe", "rtsp://admin:hunter2@cam:99999/s")
 	if code != exitError || strings.Contains(out+stderr, "hunter2") {
 		t.Errorf("exit %d, output leaks password or wrong code:\n%s%s", code, out, stderr)
+	}
+}
+
+func TestUserAddAndPasswd(t *testing.T) {
+	dir := t.TempDir()
+	t.Cleanup(func() { stdin = os.Stdin })
+	env := map[string]string{"JAGA_DATA_DIR": dir}
+	user := func(input string, args ...string) (int, string) {
+		stdin = strings.NewReader(input)
+		var errb bytes.Buffer
+		code := Run(t.Context(), append([]string{"user"}, args...), io.Discard, &errb, func(k string) (string, bool) { v, ok := env[k]; return v, ok })
+		return code, errb.String()
+	}
+	if code, out := user("short\n", "add", "ryan"); code != exitError || !strings.Contains(out, "8-128") {
+		t.Errorf("short password: %d %s", code, out)
+	}
+	if code, out := user("", "add", "ryan"); code != exitError {
+		t.Errorf("empty stdin: %d %s", code, out)
+	}
+	if code, out := user("first-pass\n", "add", "ryan", "--role", "viewer"); code != exitOK || !strings.Contains(out, "role=viewer") {
+		t.Fatalf("add: %d %s", code, out)
+	}
+	if code, out := user("first-pass\n", "add", "RYAN"); code != exitError || !strings.Contains(out, "already in use") {
+		t.Errorf("duplicate: %d %s", code, out)
+	}
+	if code, out := user("second-pass", "passwd", "ryan"); code != exitOK || strings.Contains(out, "second-pass") { // no trailing newline is fine
+		t.Errorf("passwd: %d %s", code, out)
+	}
+	if code, _ := user("second-pass\n", "passwd", "nobody"); code != exitError {
+		t.Errorf("passwd unknown user: %d", code)
 	}
 }

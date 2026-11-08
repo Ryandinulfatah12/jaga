@@ -23,7 +23,7 @@ Estimasi total 7–10 minggu kerja part-time. Setiap fase menghasilkan sesuatu y
 - [x] Kerangka CLI: `jaga start`, `jaga version`, `jaga migrate`, flag global, load `jaga.yml` + env `JAGA_*` (PR #2; parsing pakai package `flag`, belum cobra)
 - [x] Migrasi awal: `users`, `cameras`, `segments`, `events`, `settings` (PR #3, plus `sessions`, `notifiers`)
 - [x] Service CRUD kamera + enkripsi URL (PR #3, AES-256-GCM, key HKDF dari `secret_key`)
-- [ ] Endpoint `POST /cameras/{id}/test` via ffprobe (logika yang sama dipakai `jaga probe`). Logika probe + `jaga probe <url>` sudah ada (`internal/probe`); endpoint HTTP-nya menunggu router di Fase 2
+- [x] Endpoint `POST /cameras/{id}/test` via ffprobe (logika yang sama dipakai `jaga probe`) (`jaga probe` di PR #5, endpoint bersama router Fase 2)
 - [x] Validasi URL kamera (skema `rtsp`/`rtsps` saja) + unit test untuk input jahat (`file:`, `exec:`, `-i`, newline) (PR #3, plus fuzz test)
 - [x] Builder argumen FFmpeg recording (copy, segment, fragmented MP4) (PR #4)
 - [x] Supervisor: spawn, baca segment list dari stdout, insert `segments` (PR #4)
@@ -35,8 +35,8 @@ Estimasi total 7–10 minggu kerja part-time. Setiap fase menghasilkan sesuatu y
 
 ### Fase 2 — API, auth & live view (±1–2 minggu)
 
-- [ ] Router chi, middleware sesi, login/logout, rate limit, CSRF
-- [ ] `jaga init` (wizard config + admin pertama) dan `jaga user add|passwd`
+- [x] Router `net/http` (stdlib, tanpa chi), middleware sesi, login/logout, rate limit, CSRF via `http.CrossOriginProtection` (stdlib), plus CRUD `/cameras`
+- [ ] `jaga init` (wizard config + admin pertama) dan `jaga user add|passwd`. `jaga user add|passwd` sudah ada (password dari stdin, tanpa echo di terminal); `jaga init` belum
 - [ ] `jaga doctor`: cek ffmpeg, go2rtc, izin `data_dir`, disk, port
 - [ ] Integrasi go2rtc: generate config lewat YAML marshaller, API hanya `127.0.0.1`, RTSP server go2rtc mati, reload saat berubah
 - [ ] Reverse proxy `/live/*` dengan cek sesi + whitelist path & nama stream (test: `/live/api/config` harus 403)

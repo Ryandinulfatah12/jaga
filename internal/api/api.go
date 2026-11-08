@@ -1,0 +1,227 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright The Jaga Authors
+
+// Package api serves the REST API under /api/v1 with net/http routing.
+// Every endpoint except login needs a session cookie; requests that change
+// data are also checked for cross-origin forgery (http.CrossOriginProtection).
+package api
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"log/slog"
+	"net"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/ryandinulfatah12/jaga/internal/auth"
+	"github.com/ryandinulfatah12/jaga/internal/camera"
+	"github.com/ryandinulfatah12/jaga/internal/probe"
+)
+
+// CookieName holds the session token.
+const CookieName = "jaga_session"
+
+// Server holds what the handlers need. Build it, then serve Handler().
+type Server struct {
+	Auth    *auth.Store
+	Cameras *camera.Store
+	Log     *slog.Logger
+	// FFprobe is the ffprobe binary for POST /cameras/{id}/test.
+	FFprobe string
+	// TrustProxy reads the client IP (rate limit) from X-Forwarded-For and
+	// HTTPS from X-Forwarded-Proto. Only enable behind a proxy that sets them.
+	// ponytail: not in jaga.yml yet, so behind a proxy every client shares one
+	// rate-limit bucket and the cookie lacks Secure; add a config key with
+	// the reverse-proxy docs.
+	TrustProxy bool
+
+	// Limit is the login rate limit; nil means 5 per minute per IP.
+	Limit *auth.Limiter
+	// probe is replaceable in tests.
+	probe func(ctx context.Context, ffprobe, url string, sample time.Duration) (probe.Result, error)
+}
+
+type ctxKey struct{}
+
+// Handler returns the API with all middleware applied.
+func (s *Server) Handler() http.Handler {
+	if s.Limit == nil {
+		s.Limit = auth.NewLimiter(5, time.Minute)
+	}
+	if s.probe == nil {
+		s.probe = probe.Probe
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /api/v1/auth/login", s.login)
+	mux.HandleFunc("POST /api/v1/auth/logout", s.logout)
+
+	user := func(h http.HandlerFunc) http.Handler { return s.requireUser(h, false) }
+	admin := func(h http.HandlerFunc) http.Handler { return s.requireUser(h, true) }
+	mux.Handle("GET /api/v1/auth/me", user(s.me))
+	mux.Handle("GET /api/v1/cameras", user(s.listCameras))
+	mux.Handle("POST /api/v1/cameras", admin(s.createCamera))
+	mux.Handle("GET /api/v1/cameras/{id}", user(s.getCamera))
+	mux.Handle("PATCH /api/v1/cameras/{id}", admin(s.patchCamera))
+	mux.Handle("DELETE /api/v1/cameras/{id}", admin(s.deleteCamera))
+	mux.Handle("POST /api/v1/cameras/{id}/test", admin(s.testCamera))
+	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
+		writeError(w, http.StatusNotFound, "not found")
+	})
+
+	csrf := http.NewCrossOriginProtection()
+	csrf.SetDenyHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeError(w, http.StatusForbidden, "cross-origin request rejected")
+	}))
+	return securityHeaders(csrf.Handler(mux))
+}
+
+// securityHeaders applies to every response, API and (later) the frontend.
+func securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("Referrer-Policy", "no-referrer")
+		h.Set("X-Frame-Options", "DENY")
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (s *Server) requireUser(next http.HandlerFunc, adminOnly bool) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, err := r.Cookie(CookieName)
+		if err != nil {
+			writeError(w, http.StatusUnauthorized, "login required")
+			return
+		}
+		u, err := s.Auth.Session(r.Context(), c.Value)
+		if errors.Is(err, auth.ErrNoSession) {
+			writeError(w, http.StatusUnauthorized, "login required")
+			return
+		}
+		if err != nil {
+			s.internal(w, r, err)
+			return
+		}
+		if adminOnly && u.Role != auth.RoleAdmin {
+			writeError(w, http.StatusForbidden, "admin only")
+			return
+		}
+		next(w, r.WithContext(context.WithValue(r.Context(), ctxKey{}, u)))
+	})
+}
+
+func currentUser(r *http.Request) auth.User {
+	u, _ := r.Context().Value(ctxKey{}).(auth.User)
+	return u
+}
+
+// https reports whether the client reached us over TLS, so the cookie gets Secure.
+func (s *Server) https(r *http.Request) bool {
+	return r.TLS != nil || s.TrustProxy && r.Header.Get("X-Forwarded-Proto") == "https"
+}
+
+// clientIP is the rate-limit key.
+func (s *Server) clientIP(r *http.Request) string {
+	if s.TrustProxy {
+		// The last hop is the one our proxy appended; earlier ones are client-controlled.
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			parts := strings.Split(xff, ",")
+			if ip := strings.TrimSpace(parts[len(parts)-1]); net.ParseIP(ip) != nil {
+				return ip
+			}
+		}
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
+}
+
+func (s *Server) login(w http.ResponseWriter, r *http.Request) {
+	if ok, wait := s.Limit.Allow(s.clientIP(r)); !ok {
+		w.Header().Set("Retry-After", strconv.Itoa(int(wait.Seconds())+1))
+		writeError(w, http.StatusTooManyRequests, "too many login attempts, try again later")
+		return
+	}
+	var in struct{ Username, Password string }
+	if !decode(w, r, &in) {
+		return
+	}
+	u, token, err := s.Auth.Login(r.Context(), in.Username, in.Password)
+	if errors.Is(err, auth.ErrBadLogin) {
+		s.Log.Warn("login failed", "user", in.Username, "ip", s.clientIP(r))
+		writeError(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+	if err != nil {
+		s.internal(w, r, err)
+		return
+	}
+	// Secure follows the request scheme: a plain-HTTP LAN install must still
+	// be able to log in.
+	http.SetCookie(w, &http.Cookie{ //nolint:gosec // G124: Secure is set per request by s.https
+		Name: CookieName, Value: token, Path: "/",
+		MaxAge: int(auth.SessionTTL.Seconds()), HttpOnly: true, Secure: s.https(r), SameSite: http.SameSiteLaxMode,
+	})
+	s.Log.Info("login", "user", u.Username, "ip", s.clientIP(r))
+	writeJSON(w, http.StatusOK, u)
+}
+
+func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
+	if c, err := r.Cookie(CookieName); err == nil {
+		if err := s.Auth.Logout(r.Context(), c.Value); err != nil {
+			s.internal(w, r, err)
+			return
+		}
+	}
+	http.SetCookie(w, &http.Cookie{Name: CookieName, Path: "/", MaxAge: -1, HttpOnly: true, Secure: s.https(r), SameSite: http.SameSiteLaxMode}) //nolint:gosec // G124: see login
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) me(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, currentUser(r))
+}
+
+// internal logs the real error and returns a generic 500, so SQL or file
+// details never reach the client.
+func (s *Server) internal(w http.ResponseWriter, r *http.Request, err error) {
+	s.Log.Error("request failed", "method", r.Method, "path", r.URL.Path, "err", err)
+	writeError(w, http.StatusInternalServerError, "internal error")
+}
+
+func writeJSON(w http.ResponseWriter, code int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(code)
+	_ = json.NewEncoder(w).Encode(v)
+}
+
+func writeError(w http.ResponseWriter, code int, msg string) {
+	writeJSON(w, code, map[string]string{"error": msg})
+}
+
+// decode reads a JSON body of at most 64 KiB, rejecting unknown fields.
+func decode(w http.ResponseWriter, r *http.Request, v any) bool {
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(v); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		return false
+	}
+	return true
+}
+
+func pathID(w http.ResponseWriter, r *http.Request) (int64, bool) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil || id < 1 {
+		writeError(w, http.StatusNotFound, "not found")
+		return 0, false
+	}
+	return id, true
+}
