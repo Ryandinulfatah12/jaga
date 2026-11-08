@@ -50,6 +50,8 @@ const usage = `Usage: jaga [flags] <command>
 
 Commands:
   start     run the server (default)
+  init      init [--admin <name>]: write jaga.yml with a new secret_key, create the first admin
+  doctor    check ffmpeg, go2rtc, data_dir, disk, ports and the admin user (changes nothing)
   migrate   apply database migrations and exit
   user      user add <name> [--role admin|viewer] | user passwd <name>
             (password read from stdin, hidden when it is a terminal)
@@ -67,6 +69,7 @@ type globals struct {
 	config, dataDir, logLevel, logFormat string
 	seconds                              int    // probe only
 	role                                 string // user add only
+	admin                                string // init only
 }
 
 // register binds the global flags to fs. Defaults are the current values, so
@@ -78,6 +81,7 @@ func (g *globals) register(fs *flag.FlagSet) {
 	fs.StringVar(&g.logFormat, "log-format", g.logFormat, "")
 	fs.IntVar(&g.seconds, "seconds", g.seconds, "")
 	fs.StringVar(&g.role, "role", g.role, "")
+	fs.StringVar(&g.admin, "admin", g.admin, "")
 }
 
 // stdin is read by `jaga user` for the password. A variable so tests can feed it.
@@ -93,7 +97,7 @@ type env struct {
 
 // Run executes jaga with args (without the program name) and returns the exit code.
 func Run(ctx context.Context, args []string, stdout, stderr io.Writer, lookup func(string) (string, bool)) int {
-	e := &env{ctx: ctx, stdout: stdout, stderr: stderr, lookup: lookup, g: globals{logLevel: "info", logFormat: "text", seconds: 5, role: auth.RoleAdmin}}
+	e := &env{ctx: ctx, stdout: stdout, stderr: stderr, lookup: lookup, g: globals{logLevel: "info", logFormat: "text", seconds: 5, role: auth.RoleAdmin, admin: "admin"}}
 
 	root := newFlagSet("jaga")
 	e.g.register(root)
@@ -136,6 +140,10 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer, lookup fu
 		return e.migrate()
 	case "version":
 		return e.version()
+	case "init":
+		return e.initCmd()
+	case "doctor":
+		return e.doctor()
 	case "probe":
 		if len(pos) < 1 {
 			return usageError(stderr, errors.New("probe: missing <rtsp-url>"))
@@ -473,7 +481,7 @@ func (e *env) user(action, name string) int {
 // readPassword reads one line from stdin. On a terminal it turns echo off
 // with stty for the duration.
 // ponytail: stty works on Linux/macOS; golang.org/x/term would cover
-// Windows too, add it with the `jaga init` wizard.
+// Windows too, add it if Windows builds are ever shipped.
 func readPassword(ctx context.Context, prompt io.Writer, label string) (string, error) {
 	if f, ok := stdin.(*os.File); ok {
 		if fi, err := f.Stat(); err == nil && fi.Mode()&os.ModeCharDevice != 0 {
@@ -566,27 +574,12 @@ func (e *env) version() int {
 	if err != nil {
 		cfg = config.Default()
 	}
-	_, _ = fmt.Fprintln(e.stdout, ffmpegVersion(e.ctx, cfg.FFmpegPath))
+	for _, t := range [][2]string{{"ffmpeg", cfg.FFmpegPath}, {"go2rtc", cfg.Go2RTC.Path}} {
+		v, err := toolVersion(e.ctx, t[0], t[1])
+		if err != nil {
+			v = err.Error()
+		}
+		_, _ = fmt.Fprintln(e.stdout, v)
+	}
 	return exitOK
-}
-
-// ffmpegVersion returns e.g. "ffmpeg 7.1 (/usr/bin/ffmpeg)" or "ffmpeg not found".
-func ffmpegVersion(ctx context.Context, name string) string {
-	path, err := exec.LookPath(name)
-	if err != nil {
-		return "ffmpeg not found (" + name + ")"
-	}
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	out, err := exec.CommandContext(ctx, path, "-version").Output() //nolint:gosec // path is the admin-configured ffmpeg_path
-	if err != nil {
-		return "ffmpeg unusable (" + path + "): " + err.Error()
-	}
-	first, _, _ := strings.Cut(string(out), "\n")
-	f := strings.Fields(first) // "ffmpeg version 7.1 Copyright ..."
-	v := "unknown"
-	if len(f) >= 3 && f[1] == "version" {
-		v = f[2]
-	}
-	return fmt.Sprintf("ffmpeg %s (%s)", v, path)
 }

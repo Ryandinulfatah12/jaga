@@ -7,8 +7,8 @@ Semuanya dijalankan lewat satu binary `jaga`. Perintah sehari-hari cukup `jaga s
 | Perintah | Fungsi |
 | --- | --- |
 | `jaga start` | Jalankan server: API, UI, supervisor, retensi. Ini perintah default. |
-| `jaga init` | Wizard pertama kali: buat `jaga.yml`, generate `secret_key`, buat admin pertama |
-| `jaga doctor` | Cek `ffmpeg`/`ffprobe`/go2rtc, izin tulis `data_dir`, sisa disk, port bentrok |
+| `jaga init [--admin <nama>] [--data-dir <dir>]` | Pertama kali: tulis `jaga.yml` (mode 0600) dengan `secret_key` acak 256 bit, buat admin pertama (default `admin`, password dari stdin). Tidak pernah menimpa config yang sudah ada |
+| `jaga doctor` | Cek config, `secret_key`, `ffmpeg`/`ffprobe`/go2rtc, izin tulis `data_dir`, sisa disk vs kuota, DB + admin, port bentrok. Tidak mengubah apa pun. Exit code dari masalah pertama |
 | `jaga probe <rtsp-url>` | Uji URL kamera via ffprobe (codec, resolusi, fps, bitrate) tanpa menyimpannya |
 | `jaga camera list` | Daftar kamera beserta status (butuh server berjalan atau baca DB langsung) |
 | `jaga user add <nama> [--role admin\|viewer]` | Tambah user (default `admin`). Password dibaca dari stdin: di terminal tanpa echo, atau lewat pipe (`echo … \| jaga user add ryan`) |
@@ -50,11 +50,27 @@ Di mode non-TTY (systemd, Docker), banner tidak ditampilkan dan log langsung dit
 
 ```
 $ jaga doctor
-✓ ffmpeg 7.1          /usr/bin/ffmpeg
-✓ go2rtc 1.9.9        embedded
-✓ data_dir            /mnt/cctv  writable  412 GB free
-✗ port 8555/udp       in use by pid 1834 (go2rtc)
-  → stop the other go2rtc or set go2rtc.webrtc_port in jaga.yml
+✓ config       jaga.yml
+✓ secret_key   set
+✓ ffmpeg       ffmpeg 9.0.2 (/usr/local/bin/ffmpeg)
+✓ ffprobe      found
+✓ go2rtc       go2rtc 1.9.15 (/opt/jaga/go2rtc)
+✓ data_dir     /work/data  writable  44.7 GB free (55% used, quota 90%)
+✓ database     /work/data/jaga.db, admin present
+✓ port 8080/tcp listen free
+✗ port 8555/udp webrtc: listen udp :8555: bind: address already in use
+  → stop the other program or set go2rtc.webrtc_port in jaga.yml
+```
+
+Exit code mengikuti masalah pertama dari atas (config `2`, dependensi `3`, lainnya `1`), sehingga yang perlu dibereskan duluan selalu yang paling atas. Tanpa go2rtc, rekaman tetap jalan dan hanya live view yang mati.
+
+### Contoh `jaga init`
+
+```
+$ echo "$PASS" | jaga init --admin ryan --data-dir /mnt/cctv
+✓ jaga.yml written (mode 0600), back up its secret_key
+✓ admin "ryan" created in /mnt/cctv/jaga.db
+  next: jaga doctor, then jaga start
 ```
 
 ### Implementasi
@@ -62,7 +78,8 @@ $ jaga doctor
 - Parsing perintah: package `flag` dari standard library, satu `FlagSet` per perintah sehingga flag global boleh ditaruh sebelum atau sesudah perintah. Ganti ke `spf13/cobra` bila perintah mulai bertingkat (`jaga user add`, `jaga camera list`) atau butuh shell completion.
 - Output: `charmbracelet/lipgloss` untuk warna, `log/slog` dengan handler teks berwarna untuk TTY dan handler JSON untuk non-TTY.
 - Lokasi kode: `cmd/jaga/` hanya menangkap sinyal dan memanggil `cli.Run`, `internal/cli/` untuk tiap subcommand, `internal/config/` untuk `jaga.yml` + env, dan `internal/ui/term/` untuk palet dan simbol.
-- Sudah ada: `start`, `migrate`, `version`, `probe`, `user add|passwd`. Belum ada (menyusul): `init`, `doctor`, `camera`, `backup`, `--no-color` dan banner berwarna (bersama `internal/ui/term`), versi go2rtc di `jaga version` (Fase 2).
+- Sudah ada: `start`, `init`, `doctor`, `migrate`, `version` (termasuk versi go2rtc), `probe`, `user add|passwd`. Belum ada (menyusul): `camera`, `backup`, `--no-color` dan banner berwarna (bersama `internal/ui/term`).
+- `jaga init` sengaja bukan wizard interaktif: hanya password yang ditanya, nilai lain lewat flag, sehingga bisa dipakai di script dan Docker (`echo "$PASS" | jaga init --admin ryan`).
 
 ### Contoh output `jaga probe`
 
