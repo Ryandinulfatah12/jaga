@@ -74,8 +74,8 @@ Estimasi total 7–10 minggu kerja part-time. Setiap fase menghasilkan sesuatu y
 - [ ] Uji ketahanan 72 jam (memory leak, jumlah goroutine, file descriptor)
 - [ ] Auto-discovery ONVIF (WS-Discovery) di jaringan lokal
 - [ ] Backup/restore konfigurasi (`jaga backup`, export JSON)
-- [x] Dockerfile multi-stage (debian-slim, FFmpeg LGPL ter-pin, user non-root) + docker-compose (README instalasi menyusul)
-- [ ] Panduan "akses dari luar rumah": Tailscale/WireGuard atau reverse proxy + HTTPS, dengan peringatan agar tidak melakukan port forward
+- [x] Dockerfile multi-stage (debian-slim, FFmpeg LGPL ter-pin, user non-root) + docker-compose + README instalasi Docker (build sendiri sampai image dirilis)
+- [x] Panduan "akses dari luar rumah" (ringkas, di README bagian Privacy): Tailscale/WireGuard, peringatan jangan port forward. Panduan reverse proxy + HTTPS menyusul bersama `trust_proxy`
 - [ ] Review keamanan mandiri sebelum rilis: threat model, fuzz parser segment list & URL
 - [ ] Rilis v0.1 via GoReleaser: binary amd64 + arm64, image GHCR, checksum, SBOM, tanda tangan (cosign/attestation), tarball source FFmpeg ([checklist rilis](09-legal.md#checklist-setiap-rilis))
 
