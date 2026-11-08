@@ -314,7 +314,12 @@ func (e *env) start() int {
 	}
 	lv := e.liveView(cfg, all)
 	apiSrv := &api.Server{Auth: users, Cameras: cams, Log: e.log, FFprobe: recorder.FFprobePath(ffmpeg), Status: hub, UI: web.Handler(),
-		DB: conn, DataDir: cfg.DataDir}
+		DB: conn, DataDir: cfg.DataDir, Started: time.Now(), QuotaPercent: cfg.Storage.DiskQuotaPercent}
+	for _, t := range [][2]string{{"ffmpeg", ffmpeg}, {"go2rtc", cfg.Go2RTC.Path}} {
+		if v, err := toolVersion(e.ctx, t[0], t[1]); err == nil {
+			apiSrv.Tools = append(apiSrv.Tools, v)
+		}
+	}
 	if lv != nil {
 		apiSrv.Live = lv.proxy
 	}

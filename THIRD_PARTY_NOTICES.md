@@ -1,6 +1,6 @@
 # Third-party notices
 
-Jaga's own code is licensed under Apache-2.0. Binary releases and the Docker image also ship the third-party components below. The full license texts are generated at build time into `THIRD_PARTY_LICENSES/`, which is included in every archive and image (`/usr/share/doc/jaga/`). They can also be viewed in the web UI under **About → Open source licenses**, or with `jaga version --licenses`.
+Jaga's own code is licensed under Apache-2.0. Binary releases and the Docker image also ship the third-party components below. The full license texts are generated at build time into `THIRD_PARTY_LICENSES/`, which is included in every archive and image (`/usr/share/doc/jaga/`). The web UI shows a summary under **System → About**.
 
 | Component | License | How Jaga uses it |
 | --- | --- | --- |

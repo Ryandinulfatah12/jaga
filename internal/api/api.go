@@ -54,6 +54,10 @@ type Server struct {
 	// DB and DataDir serve recordings (timeline and segment files).
 	DB      *sql.DB
 	DataDir string
+	// For GET /system: tool versions, start time and the disk quota.
+	Tools        []string
+	Started      time.Time
+	QuotaPercent int
 
 	// Limit is the login rate limit; nil means 5 per minute per IP.
 	Limit *auth.Limiter
@@ -94,6 +98,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /api/v1/cameras/{id}/segments", user(s.segments))
 	mux.Handle("GET /api/v1/segments/{id}/file", user(s.segmentFile))
 	mux.Handle("GET /api/v1/events/stream", user(s.eventStream))
+	mux.Handle("GET /api/v1/system", user(s.system))
 	if s.Live != nil {
 		mux.Handle("/live/", user(s.Live.ServeHTTP))
 	}

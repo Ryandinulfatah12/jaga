@@ -367,3 +367,33 @@ html {
     animation: none;
   }
 }
+
+/* System page: disk meter with the quota mark. */
+.meter {
+  position: relative;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--jg-bg);
+  border: 1px solid var(--jg-border);
+}
+.meter span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  background: rgb(47 203 122 / 0.7); /* aman-500 */
+}
+.meter span.hot {
+  background: var(--jg-accent);
+}
+.meter i {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--jg-text-muted);
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}

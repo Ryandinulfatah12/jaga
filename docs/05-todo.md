@@ -54,8 +54,8 @@ Estimasi total 7–10 minggu kerja part-time. Setiap fase menghasilkan sesuatu y
 - [ ] Talk (audio dua arah) lewat WebRTC backchannel go2rtc, butuh HTTPS untuk mikrofon
 - [x] Timeline playback: bar 24 jam per kamera per hari, highlight segmen motion, seek via Range request (`http.ServeContent`), lanjut otomatis ke segmen berikutnya, tombol panah ±1/10 menit, download segmen
 - [ ] Export klip (pilih rentang → download)
-- [ ] Halaman sistem: CPU, RAM, disk, status tiap kamera
-- [ ] Halaman About: versi + daftar lisensi open source (embed `THIRD_PARTY_LICENSES`)
+- [x] Halaman sistem: CPU, RAM, disk, status tiap kamera (`GET /system`, halaman System, refresh 10 s; status kamera live via SSE)
+- [x] Halaman About: versi Jaga/FFmpeg/go2rtc + ringkasan lisensi (bagian bawah halaman System). Teks lisensi lengkap ada di image `/usr/share/doc/jaga/`; embed `THIRD_PARTY_LICENSES` ke UI menyusul saat rilis v0.1
 - [x] Header CSP ketat, font di-embed (tanpa CDN)
 - [x] Embed hasil build ke binary Go (`make web build`, tag `webui`; tanpa build, binary menampilkan halaman placeholder)
 

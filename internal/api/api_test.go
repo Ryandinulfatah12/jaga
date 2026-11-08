@@ -584,3 +584,34 @@ func TestSegmentsAndFile(t *testing.T) {
 		t.Errorf("anonymous = %d", code)
 	}
 }
+
+func TestSystem(t *testing.T) {
+	f := newFixture(t)
+	f.s.Tools, f.s.QuotaPercent = []string{"ffmpeg 9 (/x)"}, 90
+	admin := f.client(t, "admin", "admin-pass")
+	_, body := f.do(t, admin, "POST", "/api/v1/cameras", `{"name":"c","main_url":"rtsp://10.0.0.2/main"}`)
+	var c cameraOut
+	_ = json.Unmarshal([]byte(body), &c)
+	now := time.Now().UnixMilli()
+	for _, s := range [][2]int64{{now - 48*3600_000, 100}, {now - 3600_000, 30}, {now - 60_000, 12}} {
+		if _, err := f.s.DB.ExecContext(t.Context(), `INSERT INTO segments (camera_id, path, start_ts, end_ts, size_bytes) VALUES (?, ?, ?, ?, ?)`,
+			c.ID, fmt.Sprintf("recordings/%d/x/%d.mp4", c.ID, s[0]), s[0], s[0]+1000, s[1]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	viewer := f.client(t, "viewer", "viewer-pass")
+	code, body := f.do(t, viewer, "GET", "/api/v1/system", "")
+	var out systemOut
+	if err := json.Unmarshal([]byte(body), &out); code != 200 || err != nil {
+		t.Fatalf("system = %d %s", code, body)
+	}
+	if len(out.Recordings) != 1 || out.Recordings[0] != (recStats{CameraID: c.ID, Segments: 3, Bytes: 142, Oldest: now - 48*3600_000, Last24h: 42}) {
+		t.Errorf("recordings = %+v", out.Recordings)
+	}
+	if out.Disk.Total == 0 || out.Disk.QuotaPercent != 90 || out.CPUs < 1 || len(out.Tools) != 1 || out.Version == "" {
+		t.Errorf("system = %+v", out)
+	}
+	if code, _ := f.do(t, &http.Client{}, "GET", "/api/v1/system", ""); code != 401 {
+		t.Errorf("anonymous = %d", code)
+	}
+}
