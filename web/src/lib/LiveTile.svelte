@@ -22,30 +22,36 @@
   const st = $derived(stateView(statuses[camera.id]?.state))
 </script>
 
-<div class="relative overflow-hidden rounded-md border border-line bg-black {big ? 'h-full' : 'aspect-video max-h-full'}">
+<!-- The name sits under the video, never on it: cameras burn their own OSD into any corner. -->
+<div class="tile relative flex flex-col overflow-hidden rounded-lg border border-line bg-surface {big ? 'h-full' : ''}">
+  <div class="vignette relative bg-black {big ? 'min-h-0 flex-1' : 'aspect-video'}">
   <!-- Live view has no audio track to read: always muted, so autoplay works. -->
   <video bind:this={video} muted playsinline class="h-full w-full object-contain" aria-label={'Live: ' + camera.name}></video>
 
   {#if live !== 'playing'}
     <!-- The tile is always black, so fixed light text instead of theme colours. -->
-    <div class="absolute inset-0 grid place-items-center p-4 text-center text-neutral-300">
+    <div class="absolute inset-0 grid place-items-center bg-[radial-gradient(ellipse_at_center,rgb(26_34_49),rgb(0_0_0))] p-4 text-center text-neutral-300">
       {#if live.startsWith('error:')}
-        <p><span class="text-white">No live video.</span><br /><span class="font-mono text-xs">{live.slice(6)}</span><br />Retrying…</p>
+        <p>
+          <span class="mx-auto mb-2 block size-9 rounded-full border border-white/15 text-lg leading-9 text-white/70" aria-hidden="true">⌁</span>
+          <span class="font-medium text-white">No live video</span><br /><span class="font-mono text-xs text-neutral-400">{live.slice(6)}</span><br /><span class="text-xs">Retrying…</span>
+        </p>
       {:else}
-        <p>Connecting…</p>
+        <p class="flex items-center gap-2"><span class="size-4 animate-spin rounded-full border-2 border-white/20 border-t-accent" aria-hidden="true"></span>Connecting…</p>
       {/if}
     </div>
   {/if}
 
-  <!-- Bottom bar with a solid backdrop: cameras burn their own clock into the top corner. -->
-  <div class="absolute inset-x-0 bottom-0 flex items-center gap-2 bg-black/90 px-3 py-1.5 text-white">
-    <span class="truncate font-medium">{camera.name}</span>
-    <span class="ml-auto flex shrink-0 items-center gap-1.5 text-xs">
-      {#if st.cross}<span aria-hidden="true">✕</span>{:else}<span class="size-2 rounded-full {st.hollow ? 'border border-current' : st.dot}" class:rec-blink={st.blink}></span>{/if}
-      {st.label}
-    </span>
   </div>
-
+  {#if !big}
+    <div class="flex items-center gap-2 border-t border-line px-3 py-2">
+      <span class="truncate font-medium">{camera.name}</span>
+      <span class="pill ml-auto shrink-0 {st.blink ? 'pill-rec' : st.label === 'retrying' ? 'text-accent-fg' : 'text-muted'}">
+        {#if st.cross}<span aria-hidden="true">✕</span>{:else}<span class="size-2 rounded-full {st.hollow ? 'border border-current' : st.dot}" class:rec-blink={st.blink}></span>{/if}
+        {st.label}
+      </span>
+    </div>
+  {/if}
   {#if onopen}
     <button class="absolute inset-0 cursor-zoom-in" onclick={onopen} aria-label={'Open ' + camera.name + ' full size'}></button>
   {/if}

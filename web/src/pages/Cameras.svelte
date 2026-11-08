@@ -86,13 +86,13 @@
   }
 
   const kbps = (k) => (k >= 1000 ? (k / 1000).toFixed(1) + ' Mbps' : k + ' kbps')
-  const input = 'w-full rounded-sm border border-line bg-bg px-3 py-2'
+  const input = 'h-10 w-full rounded-md border border-field bg-bg/70 px-3'
 </script>
 
-<div class="mb-4 flex items-center">
-  <h1 class="mr-auto text-xl font-semibold">Cameras</h1>
+<div class="rise mb-5 flex items-center">
+  <h1 class="mr-auto text-2xl font-semibold tracking-tight">Cameras</h1>
   {#if admin}
-    <button class="rounded-sm bg-accent px-4 py-2 font-semibold text-on-accent hover:bg-accent-hover" onclick={() => edit(null)}>Add camera</button>
+    <button class="btn-primary rounded-md px-4 py-2" onclick={() => edit(null)}>+ Add camera</button>
   {/if}
 </div>
 
@@ -100,9 +100,9 @@
   <p class="text-rec" role="alert">✗ {error}</p>
 {/if}
 
-<div class="overflow-x-auto rounded-md border border-line">
+<div class="glass rise overflow-x-auto rounded-lg">
   <table class="w-full text-left">
-    <thead class="bg-surface text-muted">
+    <thead class="text-xs tracking-wide text-muted uppercase">
       <tr>
         <th class="px-3 py-2 font-medium">Name</th>
         <th class="px-3 py-2 font-medium">Status</th>
@@ -115,7 +115,7 @@
       {#each cameras as c (c.id)}
         {@const s = statuses[c.id]}
         {@const v = stateView(s?.state)}
-        <tr class="border-t border-line">
+        <tr class="border-t border-line/60 transition-colors hover:bg-raised/40">
           <td class="px-3 py-2 font-medium">{c.name}{#if !c.enabled}<span class="ml-2 text-muted">(disabled)</span>{/if}</td>
           <td class="px-3 py-2">
             <span class="flex items-center gap-1.5 {v.text}">
@@ -137,8 +137,8 @@
 </div>
 
 {#if editing}
-  <div class="fixed inset-0 z-10 grid place-items-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-labelledby="cam-title">
-    <form onsubmit={save} class="max-h-full w-full max-w-lg overflow-y-auto rounded-lg border border-line bg-surface p-6">
+  <div class="fixed inset-0 z-30 grid place-items-center bg-black/60 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="cam-title">
+    <form onsubmit={save} class="glass rise max-h-full w-full max-w-lg overflow-y-auto rounded-lg p-6 shadow-2xl shadow-black/50">
       <h2 id="cam-title" class="mb-4 text-lg font-semibold">{editing === 'new' ? 'Add camera' : 'Edit ' + editing.name}</h2>
 
       <label class="mb-1 block text-muted" for="f-name">Name</label>
@@ -152,7 +152,7 @@
         placeholder={editing === 'new' ? 'rtsp://user:pass@192.168.1.10:554/stream1' : editing.main_url + '  (blank = keep)'}
         autocomplete="off"
         spellcheck="false"
-        class="{input} mb-3 font-mono text-xs"
+        class="{input} mb-3 font-mono text-[13px] placeholder:text-muted"
       />
       <label class="mb-1 block text-muted" for="f-sub">Sub stream URL <span class="text-xs">(optional, used for the grid)</span></label>
       <input
@@ -161,7 +161,7 @@
         placeholder={editing !== 'new' && editing.sub_url ? editing.sub_url + '  (blank = keep)' : 'rtsp://…/stream2'}
         autocomplete="off"
         spellcheck="false"
-        class="{input} mb-3 font-mono text-xs"
+        class="{input} mb-3 font-mono text-[13px] placeholder:text-muted"
       />
 
       <div class="mb-3 grid grid-cols-2 gap-3">
@@ -191,12 +191,12 @@
       {/if}
 
       {#if editing !== 'new'}
-        <div class="mb-4 rounded-md border border-line bg-bg p-3" aria-live="polite">
+        <div class="mb-4 rounded-md border border-line bg-bg/60 p-3" aria-live="polite">
           <div class="mb-2 flex items-center gap-2">
             <span class="mr-auto font-medium">Connection</span>
-            <button type="button" class="rounded-sm border border-line px-3 py-1 hover:bg-raised" disabled={test?.busy} onclick={() => runTest('main')}>Test main</button>
+            <button type="button" class="rounded-full border border-line px-3 py-1 transition-colors hover:border-accent hover:text-accent-fg" disabled={test?.busy} onclick={() => runTest('main')}>Test main</button>
             {#if editing.sub_url}
-              <button type="button" class="rounded-sm border border-line px-3 py-1 hover:bg-raised" disabled={test?.busy} onclick={() => runTest('sub')}>Test sub</button>
+              <button type="button" class="rounded-full border border-line px-3 py-1 transition-colors hover:border-accent hover:text-accent-fg" disabled={test?.busy} onclick={() => runTest('sub')}>Test sub</button>
             {/if}
           </div>
           {#if test?.saved}
@@ -230,7 +230,7 @@
           <button type="button" class="rounded-sm px-3 py-2 text-rec hover:underline" onclick={remove}>Delete</button>
         {/if}
         <button type="button" class="ml-auto rounded-sm px-4 py-2 text-muted hover:text-fg" onclick={() => (editing = null)}>Close</button>
-        <button disabled={saving} class="rounded-sm bg-accent px-4 py-2 font-semibold text-on-accent hover:bg-accent-hover disabled:opacity-60">{saving ? 'Saving…' : 'Save'}</button>
+        <button disabled={saving} class="btn-primary rounded-md px-5 py-2 disabled:opacity-60">{saving ? 'Saving…' : 'Save'}</button>
       </div>
     </form>
   </div>
