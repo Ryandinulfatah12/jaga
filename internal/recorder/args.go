@@ -40,8 +40,12 @@ func Dir(dataDir string, cameraID int64) string {
 // fragmented MP4 segments, and FFmpeg writes the name of every finished
 // segment to stdout as a CSV line.
 func Build(ffmpegPath, dataDir string, c camera.Camera) (Command, error) {
+	src := c.MainURL
+	if c.RecordStream == camera.StreamSub {
+		src = c.SubURL
+	}
 	// Re-checked here because this is where the URL meets argv.
-	if err := camera.ValidateURL(c.MainURL); err != nil {
+	if err := camera.ValidateURL(src); err != nil {
 		return Command{}, fmt.Errorf("camera %d: %w", c.ID, err)
 	}
 	if c.ID < 1 {
@@ -61,7 +65,7 @@ func Build(ffmpegPath, dataDir string, c camera.Camera) (Command, error) {
 		// -timeout makes FFmpeg exit when a camera stops sending but keeps
 		// the TCP connection open (spike scenario H).
 		"-rtsp_transport", "tcp", "-timeout", "5000000",
-		"-i", c.MainURL,
+		"-i", src,
 		"-map", "0:v",
 	}
 	if c.RecordAudio {

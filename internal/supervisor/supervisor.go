@@ -153,7 +153,8 @@ func (s *Supervisor) Apply(cams []camera.Camera) {
 // sameRecording reports whether a and b record the same way, so a change
 // to b (a rename, the retention days) needs no restart.
 func sameRecording(a, b camera.Camera) bool {
-	return a.MainURL == b.MainURL && a.RecordAudio == b.RecordAudio && a.SegmentSec == b.SegmentSec
+	return a.MainURL == b.MainURL && a.SubURL == b.SubURL && a.RecordStream == b.RecordStream &&
+		a.RecordAudio == b.RecordAudio && a.SegmentSec == b.SegmentSec
 }
 
 func (s *Supervisor) setStatus(st status.Status) {

@@ -608,3 +608,23 @@ func TestLastLineSkipsRepeatNotice(t *testing.T) {
 		t.Errorf("lastLine = %q", got)
 	}
 }
+
+func TestSameRecording(t *testing.T) {
+	a := camera.New("a", "rtsp://cam/main")
+	a.SubURL = "rtsp://cam/sub"
+	b := a
+	b.Name = "renamed"
+	if !sameRecording(a, b) {
+		t.Error("rename must not restart the recorder")
+	}
+	b = a
+	b.RecordStream = camera.StreamSub
+	if sameRecording(a, b) {
+		t.Error("switching to the sub stream must restart the recorder")
+	}
+	b = a
+	b.SubURL = "rtsp://cam/sub2"
+	if sameRecording(a, b) {
+		t.Error("a new sub URL must restart the recorder (it may be the recorded one)")
+	}
+}

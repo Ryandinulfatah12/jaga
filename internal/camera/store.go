@@ -25,6 +25,10 @@ const (
 	RecordContinuous = "continuous"
 	RecordOff        = "off"
 
+	// Recorded stream: main (full resolution) or sub (smaller files).
+	StreamMain = "main"
+	StreamSub  = "sub"
+
 	MotionOff       = "off"
 	MotionONVIF     = "onvif"
 	MotionFrameDiff = "framediff"
@@ -39,6 +43,7 @@ type Camera struct {
 	SubURL        string // optional, "" when unset
 	Enabled       bool
 	RecordMode    string
+	RecordStream  string // StreamMain or StreamSub
 	RecordAudio   bool
 	SegmentSec    int
 	RetentionDays *int // nil: storage.default_retention_days
@@ -59,6 +64,7 @@ func New(name, mainURL string) Camera {
 		MainURL:      mainURL,
 		Enabled:      true,
 		RecordMode:   RecordContinuous,
+		RecordStream: StreamMain,
 		SegmentSec:   600,
 		MotionMode:   MotionOff,
 		MotionConfig: json.RawMessage(`{}`),
@@ -89,6 +95,10 @@ func (c Camera) Validate() error {
 		return bad("name contains control characters")
 	case c.RecordMode != RecordContinuous && c.RecordMode != RecordOff:
 		return bad("record_mode %q, want continuous or off", c.RecordMode)
+	case c.RecordStream != StreamMain && c.RecordStream != StreamSub:
+		return bad("record_stream %q, want main or sub", c.RecordStream)
+	case c.RecordStream == StreamSub && c.SubURL == "":
+		return bad("record_stream sub needs a sub_url")
 	case c.MotionMode != MotionOff && c.MotionMode != MotionONVIF && c.MotionMode != MotionFrameDiff:
 		return bad("motion_mode %q, want off, onvif or framediff", c.MotionMode)
 	case c.SegmentSec < 10 || c.SegmentSec > 3600:
@@ -146,7 +156,7 @@ func NewStore(db *sql.DB, seal *Sealer) *Store {
 }
 
 const columns = `id, name, main_url, sub_url, enabled, record_mode, record_audio,
-	segment_sec, retention_days, motion_mode, motion_config, onvif_port, created_at`
+	segment_sec, retention_days, motion_mode, motion_config, onvif_port, record_stream, created_at`
 
 // Create stores c and returns it with ID and CreatedAt set.
 func (s *Store) Create(ctx context.Context, c Camera) (Camera, error) {
@@ -156,11 +166,11 @@ func (s *Store) Create(ctx context.Context, c Camera) (Camera, error) {
 	main, sub := s.sealURLs(c)
 	row := s.db.QueryRowContext(ctx, `
 		INSERT INTO cameras (name, main_url, sub_url, enabled, record_mode, record_audio,
-			segment_sec, retention_days, motion_mode, motion_config, onvif_port)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			segment_sec, retention_days, motion_mode, motion_config, onvif_port, record_stream)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		RETURNING `+columns,
 		c.Name, main, sub, c.Enabled, c.RecordMode, c.RecordAudio,
-		c.SegmentSec, c.RetentionDays, c.MotionMode, string(c.MotionConfig), c.ONVIFPort)
+		c.SegmentSec, c.RetentionDays, c.MotionMode, string(c.MotionConfig), c.ONVIFPort, c.RecordStream)
 	out, err := s.scan(row)
 	return out, mapErr(err)
 }
@@ -174,11 +184,11 @@ func (s *Store) Update(ctx context.Context, c Camera) (Camera, error) {
 	row := s.db.QueryRowContext(ctx, `
 		UPDATE cameras SET name = ?, main_url = ?, sub_url = ?, enabled = ?, record_mode = ?,
 			record_audio = ?, segment_sec = ?, retention_days = ?, motion_mode = ?, motion_config = ?,
-			onvif_port = ?
+			onvif_port = ?, record_stream = ?
 		WHERE id = ?
 		RETURNING `+columns,
 		c.Name, main, sub, c.Enabled, c.RecordMode, c.RecordAudio,
-		c.SegmentSec, c.RetentionDays, c.MotionMode, string(c.MotionConfig), c.ONVIFPort, c.ID)
+		c.SegmentSec, c.RetentionDays, c.MotionMode, string(c.MotionConfig), c.ONVIFPort, c.RecordStream, c.ID)
 	out, err := s.scan(row)
 	return out, mapErr(err)
 }
@@ -243,7 +253,7 @@ func (s *Store) scan(r scanner) (Camera, error) {
 		created   int64
 	)
 	if err := r.Scan(&c.ID, &c.Name, &main, &sub, &c.Enabled, &c.RecordMode, &c.RecordAudio,
-		&c.SegmentSec, &retention, &c.MotionMode, &motionCfg, &onvifPort, &created); err != nil {
+		&c.SegmentSec, &retention, &c.MotionMode, &motionCfg, &onvifPort, &c.RecordStream, &created); err != nil {
 		return Camera{}, err
 	}
 	var err error
