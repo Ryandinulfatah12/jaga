@@ -73,7 +73,7 @@ Estimasi total 7–10 minggu kerja part-time. Setiap fase menghasilkan sesuatu y
 - [ ] Benchmark 16 kamera di mini PC: catat CPU, RAM, IO, bandingkan dengan target
 - [ ] Uji ketahanan 72 jam (memory leak, jumlah goroutine, file descriptor)
 - [ ] Auto-discovery ONVIF (WS-Discovery) di jaringan lokal
-- [ ] Backup/restore konfigurasi (`jaga backup`, export JSON)
+- [x] Backup/restore konfigurasi: `jaga backup <file>` (salinan SQLite konsisten via `VACUUM INTO`, bukan JSON: satu file, bisa langsung dipakai lagi). Restore = salin balik. ponytail: export JSON tanpa hash bila nanti perlu migrasi antar versi besar
 - [x] Dockerfile multi-stage (debian-slim, FFmpeg LGPL ter-pin, user non-root) + docker-compose (README instalasi menyusul)
 - [ ] Panduan "akses dari luar rumah": Tailscale/WireGuard atau reverse proxy + HTTPS, dengan peringatan agar tidak melakukan port forward
 - [ ] Review keamanan mandiri sebelum rilis: threat model, fuzz parser segment list & URL
