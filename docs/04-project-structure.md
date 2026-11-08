@@ -56,7 +56,7 @@ secret_key: ${JAGA_SECRET_KEY}   # enkripsi URL kamera
 - `network_mode: host` direkomendasikan agar RTSP/WebRTC tidak terkendala NAT Docker; alternatif: publish 8080 dan port WebRTC 8555 TCP/UDP.
 - Volume `/data` di disk terpisah (HDD surveillance), bukan di disk OS.
 - Healthcheck: cek TCP ke port `listen` (nanti `GET /api/v1/system`).
-- Kamera seperti Tapo C2xx menolak sesi RTSP kedua ke main stream selama recorder memakainya, jadi tampilan full-size memakai sub stream untuk kamera yang sedang merekam main stream (merekam sub stream membebaskan main untuk live full-size). Relay lewat server RTSP go2rtc sengaja tidak dipakai: di go2rtc 1.9.15 username/password RTSP tidak ditegakkan untuk koneksi loopback, sehingga proses lain di host bisa mem-publish ke stream kamera dan rekaman bisa berisi video palsu.
+- Kamera seperti Tapo C2xx hanya memberi video ke dua sesi RTSP sekaligus, apa pun stream-nya (dites di C211): recorder memakai satu, live view (grid, sub stream) satu. Sesi ketiga tersambung tetapi tidak pernah mendapat frame. Jadi tampilan full-size memakai sub stream untuk setiap kamera yang sedang merekam, baik `record_stream` main maupun sub. Relay lewat server RTSP go2rtc sengaja tidak dipakai: di go2rtc 1.9.15 username/password RTSP tidak ditegakkan untuk koneksi loopback, sehingga proses lain di host bisa mem-publish ke stream kamera dan rekaman bisa berisi video palsu.
 
 ```yaml
 services:
