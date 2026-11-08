@@ -320,7 +320,7 @@ Estimasi total 7–10 minggu kerja part-time. Setiap fase menghasilkan sesuatu y
 - [x] Halaman login & layout dasar (dark default, toggle light)
 - [x] Grid live 1/4/9/16 dengan sub-stream, klik untuk fullscreen main-stream (MSE lewat WebSocket go2rtc, status realtime dari SSE)
 - [x] Form tambah/edit kamera + tombol test koneksi
-- [x] Pilih stream yang direkam per kamera (`record_stream` main/sub): sub hemat disk (live full-size tetap sub stream selama merekam, batas 2 sesi Tapo)
+- [x] Pilih stream yang direkam per kamera (`record_stream` main/sub): sub hemat disk dan membebaskan main untuk live full-size resolusi penuh
 - [x] Kontrol di tampilan full-size: snapshot resolusi penuh (download), suara on/off, pad pan & tilt (tahan, atau tombol panah)
 - [ ] Talk (audio dua arah) lewat WebRTC backchannel go2rtc, butuh HTTPS untuk mikrofon
 - [x] Timeline playback: bar 24 jam per kamera per hari, highlight segmen motion, seek via Range request (`http.ServeContent`), lanjut otomatis ke segmen berikutnya, tombol panah ±1/10 menit, download segmen
