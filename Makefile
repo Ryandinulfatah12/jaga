@@ -14,12 +14,19 @@ GOVULNCHECK := golang.org/x/vuln/cmd/govulncheck@v1.9.0
 # Keep in sync with docs/09-legal.md.
 ALLOWED_LICENSES := MIT,BSD-2-Clause,BSD-3-Clause,ISC,Apache-2.0,MPL-2.0,0BSD,Zlib
 
-.PHONY: all build test vet lint fmt spdx licenses vulncheck check clean
+.PHONY: all build web test vet lint fmt spdx licenses vulncheck check clean
 
 all: check build
 
+# The web UI is embedded only when web/dist exists (`make web`); otherwise
+# the binary serves a placeholder page and the API.
+BUILD_TAGS := $(if $(wildcard web/dist/index.html),webui)
+
 build:
-	CGO_ENABLED=0 $(GO) build -trimpath -ldflags '$(LDFLAGS)' -o bin/jaga ./cmd/jaga
+	CGO_ENABLED=0 $(GO) build -trimpath -tags '$(BUILD_TAGS)' -ldflags '$(LDFLAGS)' -o bin/jaga ./cmd/jaga
+
+web:
+	cd web && npm ci --ignore-scripts && npm run build
 
 test:
 	$(GO) test -race ./...
@@ -45,4 +52,4 @@ vulncheck:
 check: vet test spdx
 
 clean:
-	rm -rf bin dist
+	rm -rf bin dist web/dist

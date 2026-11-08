@@ -48,6 +48,8 @@ type Server struct {
 	CamerasChanged func()
 	// Status is the recorder state of every camera; nil means an empty hub.
 	Status *status.Hub
+	// UI serves the web UI at /; nil serves only the API.
+	UI http.Handler
 
 	// Limit is the login rate limit; nil means 5 per minute per IP.
 	Limit *auth.Limiter
@@ -90,6 +92,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not found")
 	})
+	if s.UI != nil {
+		mux.Handle("/", s.UI) // the login page is part of the UI, so no session check here
+	}
 
 	csrf := http.NewCrossOriginProtection()
 	csrf.SetDenyHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -102,7 +107,10 @@ func (s *Server) Handler() http.Handler {
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
-		h.Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+		// No inline script or style, no CDN: everything comes from the binary.
+		// blob: for the MSE player; ws/wss are covered by 'self' in current
+		// browsers (CSP3).
+		h.Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; media-src 'self' blob:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("Referrer-Policy", "no-referrer")
 		h.Set("X-Frame-Options", "DENY")

@@ -1,0 +1,66 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+/* Copyright The Jaga Authors */
+
+@import "tailwindcss";
+@import "../../docs/brand/tokens.css";
+
+/* Fonts are bundled (no CDN): latin subset of the weights in docs/07-branding.md. */
+@import "@fontsource/inter/latin-400.css";
+@import "@fontsource/inter/latin-500.css";
+@import "@fontsource/inter/latin-600.css";
+@import "@fontsource/jetbrains-mono/latin-400.css";
+@import "@fontsource/jetbrains-mono/latin-600.css";
+
+/* Components use the semantic --jg-* tokens; these utilities map them. */
+@theme {
+  --color-bg: var(--jg-bg);
+  --color-surface: var(--jg-surface);
+  --color-raised: var(--jg-raised);
+  --color-line: var(--jg-border);
+  --color-fg: var(--jg-text);
+  --color-muted: var(--jg-text-muted);
+  --color-accent: var(--jg-accent);
+  --color-accent-hover: var(--jg-accent-hover);
+  --color-on-accent: var(--jg-on-accent);
+  --color-accent-fg: var(--jg-accent-text);
+  --color-rec: var(--jg-rec);
+  --color-online: var(--jg-online);
+  --color-offline: var(--jg-offline);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+}
+
+html {
+  background: var(--jg-bg);
+  color: var(--jg-text);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 2px solid var(--jg-focus);
+  outline-offset: 2px;
+}
+
+.tnum {
+  font-feature-settings: "tnum";
+}
+
+/* REC dot blinks slowly in live view only (docs/07-branding.md). */
+@keyframes rec-blink {
+  50% {
+    opacity: 0.25;
+  }
+}
+.rec-blink {
+  animation: rec-blink 1s steps(1) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .rec-blink {
+    animation: none;
+  }
+}

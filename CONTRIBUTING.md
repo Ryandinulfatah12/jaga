@@ -27,6 +27,16 @@ Using those projects as a user is fine, including observing their behavior. Copy
 
 New dependencies must use an allowed license (MIT, BSD-2/3-Clause, ISC, Apache-2.0, MPL-2.0, 0BSD, Zlib). CI checks this with `go-licenses` and a license checker for `web/`. GPL/AGPL libraries cannot be linked into Jaga. ML models need a permissive license for **both code and weights**, so Ultralytics YOLO (AGPL-3.0) cannot be used. See [docs/09-legal.md](docs/09-legal.md) for the full policy.
 
+## Building
+
+```sh
+make web     # web UI (Node 24+, once per UI change)
+make build   # bin/jaga; embeds web/dist if it exists, else serves a placeholder page
+make check   # vet, tests, SPDX headers
+```
+
+Working on the UI: run `jaga start`, then `cd web && npm run dev` (Vite proxies `/api` and `/live` to `127.0.0.1:8080`, override with `JAGA_DEV_API`).
+
 ## Source file headers
 
 Every source file starts with:

@@ -21,8 +21,15 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: make web
       - run: make vet
       - run: make test
+      - run: go vet -tags webui ./web/ && go test -tags webui ./web/
       - run: make build
       - run: ./bin/jaga version
 
@@ -56,10 +63,14 @@ jobs:
         if: hashFiles('web/package-lock.json') != ''
         working-directory: web
         # Same allowlist as docs/09-legal.md; devDependencies included because they can end up in the bundle.
+        # OFL-1.1 is allowed for fonts only, so it is checked for @fontsource/* alone.
         run: |
           npm ci --ignore-scripts
-          npx --yes license-checker-rseidelsohn@4 --excludePrivatePackages \
+          npx --yes license-checker-rseidelsohn@4 --excludePrivatePackages --excludePackagesStartingWith '@fontsource/' \
             --onlyAllow 'MIT;BSD-2-Clause;BSD-3-Clause;ISC;Apache-2.0;MPL-2.0;0BSD;Zlib;CC0-1.0;Unicode-3.0'
+          for f in node_modules/@fontsource/*/package.json; do
+            node -e 'const p=require("./"+process.argv[1]); if (p.license !== "OFL-1.1") { console.error(p.name, p.license); process.exit(1) }' "$f"
+          done
 
   dco:
     name: DCO
