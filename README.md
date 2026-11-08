@@ -73,7 +73,7 @@ Database migrations run by themselves at start.
 
 ### Backup
 
-Back up `.env` (the secret key) and `JAGA_DATA/jaga.db` (cameras, users, recording index). Recordings are plain MP4 files under `JAGA_DATA/recordings/<camera>/<date>/`, playable with any player.
+Back up `.env` (the secret key) and the database (cameras, users, recording index): `docker compose exec jaga jaga backup /data/jaga-backup.db` writes a consistent copy while Jaga runs (needs the `jaga backup` command, PR #21). To restore, stop Jaga and put the copy back as `JAGA_DATA/jaga.db`. Recordings are plain MP4 files under `JAGA_DATA/recordings/<camera>/<date>/`, playable with any player.
 
 ## Run without Docker
 
