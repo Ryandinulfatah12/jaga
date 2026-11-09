@@ -344,9 +344,9 @@ Estimasi total 7–10 minggu kerja part-time. Setiap fase menghasilkan sesuatu y
 - [ ] Benchmark 16 kamera di mini PC: catat CPU, RAM, IO, bandingkan dengan target
 - [ ] Uji ketahanan 72 jam (memory leak, jumlah goroutine, file descriptor)
 - [ ] Auto-discovery ONVIF (WS-Discovery) di jaringan lokal
-- [ ] Backup/restore konfigurasi (`jaga backup`, export JSON)
-- [x] Dockerfile multi-stage (debian-slim, FFmpeg LGPL ter-pin, user non-root) + docker-compose (README instalasi menyusul)
-- [ ] Panduan "akses dari luar rumah": Tailscale/WireGuard atau reverse proxy + HTTPS, dengan peringatan agar tidak melakukan port forward
+- [x] Backup/restore konfigurasi: `jaga backup <file>` (salinan SQLite konsisten via `VACUUM INTO`, bukan JSON: satu file, bisa langsung dipakai lagi). Restore = salin balik. ponytail: export JSON tanpa hash bila nanti perlu migrasi antar versi besar
+- [x] Dockerfile multi-stage (debian-slim, FFmpeg LGPL ter-pin, user non-root) + docker-compose + README instalasi Docker (build sendiri sampai image dirilis)
+- [x] Panduan "akses dari luar rumah" (ringkas, di README bagian Privacy): Tailscale/WireGuard, peringatan jangan port forward. Panduan reverse proxy + HTTPS menyusul bersama `trust_proxy`
 - [ ] Review keamanan mandiri sebelum rilis: threat model, fuzz parser segment list & URL
 - [ ] Rilis v0.1 via GoReleaser: binary amd64 + arm64, image GHCR, checksum, SBOM, tanda tangan (cosign/attestation), tarball source FFmpeg ([checklist rilis](#checklist-setiap-rilis))
 
@@ -635,7 +635,7 @@ Semuanya dijalankan lewat satu binary `jaga`. Perintah sehari-hari cukup `jaga s
 | `jaga user add <nama> [--role admin\|viewer]` | Tambah user (default `admin`). Password dibaca dari stdin: di terminal tanpa echo, atau lewat pipe (`echo … \| jaga user add ryan`) |
 | `jaga user passwd <nama>` | Reset password (untuk admin yang lupa password) |
 | `jaga migrate` | Jalankan migrasi DB tanpa start server |
-| `jaga backup [--out file.json]` | Export konfigurasi (kamera, notifier, user tanpa hash). Rekaman tidak ikut. |
+| `jaga backup <file>` | Salinan konsisten `jaga.db` (kamera, user, index rekaman) via `VACUUM INTO`, aman saat Jaga jalan, file 0600, menolak menimpa. Restore: stop Jaga, salin balik ke `data_dir/jaga.db`. `secret_key` wajib ikut disimpan. Rekaman (MP4 biasa) tidak ikut. |
 | `jaga version` | Versi, commit, versi FFmpeg & go2rtc yang terdeteksi |
 
 Flag global: `--config <path>`, `--data-dir <path>`, `--log-level debug|info|warn|error`, `--log-format text|json`, `--no-color`.
@@ -699,7 +699,7 @@ $ echo "$PASS" | jaga init --admin ryan --data-dir /mnt/cctv
 - Parsing perintah: package `flag` dari standard library, satu `FlagSet` per perintah sehingga flag global boleh ditaruh sebelum atau sesudah perintah. Ganti ke `spf13/cobra` bila perintah mulai bertingkat (`jaga user add`, `jaga camera list`) atau butuh shell completion.
 - Output: `charmbracelet/lipgloss` untuk warna, `log/slog` dengan handler teks berwarna untuk TTY dan handler JSON untuk non-TTY.
 - Lokasi kode: `cmd/jaga/` hanya menangkap sinyal dan memanggil `cli.Run`, `internal/cli/` untuk tiap subcommand, `internal/config/` untuk `jaga.yml` + env, dan `internal/ui/term/` untuk palet dan simbol.
-- Sudah ada: `start`, `init`, `doctor`, `migrate`, `version` (termasuk versi go2rtc), `probe`, `user add|passwd`. Belum ada (menyusul): `camera`, `backup`, `--no-color` dan banner berwarna (bersama `internal/ui/term`).
+- Sudah ada: `start`, `init`, `doctor`, `migrate`, `version` (termasuk versi go2rtc), `probe`, `user add|passwd`, `backup`. Belum ada (menyusul): `camera`, `--no-color` dan banner berwarna (bersama `internal/ui/term`).
 - `jaga init` sengaja bukan wizard interaktif: hanya password yang ditanya, nilai lain lewat flag, sehingga bisa dipakai di script dan Docker (`echo "$PASS" | jaga init --admin ryan`).
 
 ### Contoh output `jaga probe`

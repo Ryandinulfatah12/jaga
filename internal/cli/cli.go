@@ -57,6 +57,9 @@ Commands:
   user      user add <name> [--role admin|viewer] | user passwd <name>
             (password read from stdin, hidden when it is a terminal)
   probe     probe <rtsp-url> [--seconds N]: codec, resolution, fps, bitrate (nothing stored)
+  backup    backup <file>: consistent copy of jaga.db (cameras, users, recording
+            index), safe while jaga runs. Restore: stop jaga, copy it back to
+            data_dir/jaga.db. Keep secret_key too: camera URLs need it.
   version   print version and detected dependencies
 
 Flags:
@@ -117,7 +120,7 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer, lookup fu
 	// probe <url> and user <action> <name> take positional arguments;
 	// flags may follow them.
 	var pos []string
-	want := map[string]int{"probe": 1, "user": 2}[cmd]
+	want := map[string]int{"probe": 1, "user": 2, "backup": 1}[cmd]
 	for len(pos) < want && sub.NArg() > 0 {
 		pos = append(pos, sub.Arg(0))
 		if err := sub.Parse(sub.Args()[1:]); err != nil {
@@ -155,6 +158,11 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer, lookup fu
 			return usageError(stderr, errors.New("user: want `user add <name>` or `user passwd <name>`"))
 		}
 		return e.user(pos[0], pos[1])
+	case "backup":
+		if len(pos) < 1 {
+			return usageError(stderr, errors.New("backup: missing <file>"))
+		}
+		return e.backup(pos[0])
 	case "help":
 		_, _ = fmt.Fprint(stdout, usage)
 		return exitOK
@@ -246,6 +254,36 @@ func (e *env) migrate() int {
 	}
 	closeDB()
 	e.log.Info("migrations applied", "db", filepath.Join(cfg.DataDir, "jaga.db"))
+	return exitOK
+}
+
+// backup writes a consistent snapshot of jaga.db with VACUUM INTO: one
+// transaction, so it is safe while `jaga start` writes. It refuses to
+// overwrite a file. Recordings are plain MP4 files; copy them with any tool.
+func (e *env) backup(dst string) int {
+	cfg, code := e.loadConfig()
+	if code != exitOK {
+		return code
+	}
+	if _, err := os.Stat(dst); err == nil {
+		e.log.Error("backup: file exists, not overwriting", "file", dst)
+		return exitError
+	}
+	conn, closeDB, code := e.openDB(cfg)
+	if code != exitOK {
+		return code
+	}
+	defer closeDB()
+	if _, err := conn.ExecContext(e.ctx, `VACUUM INTO ?`, dst); err != nil {
+		e.log.Error("backup", "err", err)
+		return exitError
+	}
+	// Holds password hashes and encrypted camera URLs.
+	if err := os.Chmod(dst, 0o600); err != nil {
+		e.log.Error("backup: chmod", "err", err)
+		return exitError
+	}
+	e.log.Info("backup written", "file", dst, "hint", "keep secret_key with it: camera URLs are encrypted with it")
 	return exitOK
 }
 

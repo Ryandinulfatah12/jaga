@@ -313,3 +313,36 @@ func freePort(t *testing.T) string {
 	_, p, _ := net.SplitHostPort(ln.Addr().String())
 	return p
 }
+
+func TestBackup(t *testing.T) {
+	dir := t.TempDir()
+	t.Cleanup(func() { stdin = os.Stdin })
+	env := map[string]string{"JAGA_DATA_DIR": dir}
+	stdin = strings.NewReader("backup-pass\n")
+	if code, _, stderr := run(t, t.Context(), env, "user", "add", "ryan"); code != exitOK {
+		t.Fatalf("user add: %d %s", code, stderr)
+	}
+	dst := filepath.Join(t.TempDir(), "jaga-backup.db")
+	if code, _, stderr := run(t, t.Context(), env, "backup", dst); code != exitOK {
+		t.Fatalf("backup: %d %s", code, stderr)
+	}
+	if st, err := os.Stat(dst); err != nil || st.Mode().Perm() != 0o600 {
+		t.Fatalf("backup file: %v %v", st, err)
+	}
+	// The copy is a working database: restore it as a data_dir and use it.
+	restored := t.TempDir()
+	b, _ := os.ReadFile(dst)                                                           //nolint:gosec // test temp dir
+	if err := os.WriteFile(filepath.Join(restored, "jaga.db"), b, 0o600); err != nil { //nolint:gosec // test temp dir
+		t.Fatal(err)
+	}
+	stdin = strings.NewReader("backup-pass\n")
+	if code, _, stderr := run(t, t.Context(), map[string]string{"JAGA_DATA_DIR": restored}, "user", "add", "RYAN"); code != exitError || !strings.Contains(stderr, "already in use") {
+		t.Errorf("restored db must hold the user: %d %s", code, stderr)
+	}
+	if code, _, stderr := run(t, t.Context(), env, "backup", dst); code != exitError || !strings.Contains(stderr, "not overwriting") {
+		t.Errorf("existing file: %d %s", code, stderr)
+	}
+	if code, _, _ := run(t, t.Context(), env, "backup"); code != exitError {
+		t.Errorf("missing file argument: %d", code)
+	}
+}
