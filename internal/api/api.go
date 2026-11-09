@@ -35,6 +35,8 @@ type Server struct {
 	Log     *slog.Logger
 	// FFprobe is the ffprobe binary for POST /cameras/{id}/test.
 	FFprobe string
+	// FFmpeg joins segments for clip export; "" disables it.
+	FFmpeg string
 	// TrustProxy reads the client IP (rate limit) from X-Forwarded-For and
 	// HTTPS from X-Forwarded-Proto. Only enable behind a proxy that sets them.
 	// ponytail: not in jaga.yml yet, so behind a proxy every client shares one
@@ -54,6 +56,10 @@ type Server struct {
 	// DB and DataDir serve recordings (timeline and segment files).
 	DB      *sql.DB
 	DataDir string
+	// For GET /system: tool versions, start time and the disk quota.
+	Tools        []string
+	Started      time.Time
+	QuotaPercent int
 
 	// Limit is the login rate limit; nil means 5 per minute per IP.
 	Limit *auth.Limiter
@@ -93,7 +99,9 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /api/v1/cameras/{id}/ptz", user(s.ptz))
 	mux.Handle("GET /api/v1/cameras/{id}/segments", user(s.segments))
 	mux.Handle("GET /api/v1/segments/{id}/file", user(s.segmentFile))
+	mux.Handle("GET /api/v1/cameras/{id}/clip", user(s.clip))
 	mux.Handle("GET /api/v1/events/stream", user(s.eventStream))
+	mux.Handle("GET /api/v1/system", user(s.system))
 	if s.Live != nil {
 		mux.Handle("/live/", user(s.Live.ServeHTTP))
 	}

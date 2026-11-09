@@ -123,6 +123,25 @@
     day = localDay(d)
   }
 
+  // Export: start and end as HH:MM on the chosen day; a plain link, so the
+  // browser streams the download itself (no blob in memory).
+  let exFrom = $state('')
+  let exTo = $state('')
+  const hhmm = (t) => clock(t).slice(0, 5)
+  function exportAround(t) {
+    exFrom = hhmm(Math.max(dayStart, t - 5 * 60_000))
+    exTo = hhmm(Math.min(dayEnd - 60_000, t + 5 * 60_000))
+  }
+  const exMs = (v) => (v ? new Date(`${day}T${v}:00`).getTime() : NaN)
+  const exRange = $derived.by(() => {
+    const a = exMs(exFrom)
+    const b = exMs(exTo)
+    if (!(b > a)) return { error: 'End must be after start' }
+    if (b - a > 2 * 3600_000) return { error: 'At most 2 hours per clip' }
+    if (!segs.some((s) => s.start < b && s.end > a)) return { error: 'Nothing recorded in this range' }
+    return { url: `/api/v1/cameras/${camId}/clip?from=${a}&to=${b}` }
+  })
+
   const recordedMs = $derived(segs.reduce((n, s) => n + (Math.min(s.end, dayEnd) - Math.max(s.start, dayStart)), 0))
   const cam = $derived(cameras.find((c) => c.id === camId))
 </script>
@@ -162,7 +181,8 @@
       <div class="flex items-center gap-3 border-t border-line bg-surface px-3 py-2 text-sm">
         <span class="font-medium tnum">{clock(playhead ?? current.start)}</span>
         <span class="text-muted tnum">segment {clock(current.start)} to {clock(current.end)}</span>
-        <a class="ml-auto rounded-full border border-line px-3 py-1 text-xs hover:border-accent hover:text-accent-fg" href={`/api/v1/segments/${current.id}/file?download=1`}>Download segment</a>
+        <button type="button" class="ml-auto rounded-full border border-line px-3 py-1 text-xs hover:border-accent hover:text-accent-fg" onclick={() => exportAround(playhead ?? current.start)}>Clip around here</button>
+        <a class="rounded-full border border-line px-3 py-1 text-xs hover:border-accent hover:text-accent-fg" href={`/api/v1/segments/${current.id}/file?download=1`}>Download segment</a>
       </div>
     {/if}
   </div>
@@ -200,4 +220,23 @@
       {#each [0, 3, 6, 9, 12, 15, 18, 21, 24] as h (h)}<span>{String(h).padStart(2, '0')}</span>{/each}
     </div>
   </div>
+  {#if segs.length}
+    <form class="glass mt-4 flex flex-wrap items-end gap-3 rounded-lg p-4 text-sm" onsubmit={(e) => e.preventDefault()}>
+      <div>
+        <label class="mb-1 block text-xs text-muted" for="ex-from">Clip from</label>
+        <input id="ex-from" type="time" bind:value={exFrom} class="h-9 rounded-md border border-field bg-bg/70 px-3 tnum" />
+      </div>
+      <div>
+        <label class="mb-1 block text-xs text-muted" for="ex-to">to</label>
+        <input id="ex-to" type="time" bind:value={exTo} class="h-9 rounded-md border border-field bg-bg/70 px-3 tnum" />
+      </div>
+      {#if exFrom && exTo && exRange.url}
+        <a class="btn-primary inline-flex h-9 items-center rounded-md px-4" href={exRange.url} download>Export clip (MP4)</a>
+      {:else}
+        <button type="button" class="btn-primary h-9 rounded-md px-4 opacity-50" disabled>Export clip (MP4)</button>
+        {#if exFrom && exTo}<span class="text-xs text-accent-fg" role="status">{exRange.error}</span>{/if}
+      {/if}
+      <p class="w-full text-xs text-muted">One MP4 from the recordings in that range, up to 2 hours. It may start a second or two early (cuts land on keyframes); gaps are skipped.</p>
+    </form>
+  {/if}
 </div>
