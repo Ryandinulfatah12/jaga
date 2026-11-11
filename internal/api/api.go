@@ -38,10 +38,9 @@ type Server struct {
 	// FFmpeg joins segments for clip export; "" disables it.
 	FFmpeg string
 	// TrustProxy reads the client IP (rate limit) from X-Forwarded-For and
-	// HTTPS from X-Forwarded-Proto. Only enable behind a proxy that sets them.
-	// ponytail: not in jaga.yml yet, so behind a proxy every client shares one
-	// rate-limit bucket and the cookie lacks Secure; add a config key with
-	// the reverse-proxy docs.
+	// HTTPS from X-Forwarded-Proto (config trust_proxy). Only enable behind a
+	// proxy that sets them; otherwise every proxied client shares one
+	// rate-limit bucket and the cookie lacks Secure.
 	TrustProxy bool
 
 	// Live proxies /live/* to go2rtc; nil disables live view and snapshots.
@@ -116,7 +115,7 @@ func (s *Server) Handler() http.Handler {
 	csrf.SetDenyHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, "cross-origin request rejected")
 	}))
-	return securityHeaders(csrf.Handler(mux))
+	return securityHeaders(s.hsts(csrf.Handler(mux)))
 }
 
 // securityHeaders applies to every response, API and (later) the frontend.
@@ -130,6 +129,17 @@ func securityHeaders(next http.Handler) http.Handler {
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("Referrer-Policy", "no-referrer")
 		h.Set("X-Frame-Options", "DENY")
+		next.ServeHTTP(w, r)
+	})
+}
+
+// hsts tells browsers to stay on HTTPS once they reached Jaga over it.
+// Plain-HTTP LAN installs never get it, so they keep working.
+func (s *Server) hsts(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.https(r) {
+			w.Header().Set("Strict-Transport-Security", "max-age=31536000")
+		}
 		next.ServeHTTP(w, r)
 	})
 }
@@ -165,12 +175,26 @@ func currentUser(r *http.Request) auth.User {
 
 // https reports whether the client reached us over TLS, so the cookie gets Secure.
 func (s *Server) https(r *http.Request) bool {
-	return r.TLS != nil || s.TrustProxy && r.Header.Get("X-Forwarded-Proto") == "https"
+	return r.TLS != nil || s.viaProxy(r) && r.Header.Get("X-Forwarded-Proto") == "https"
+}
+
+// viaProxy reports whether the forwarded headers can be believed: TrustProxy
+// is on and the request comes from loopback, where the proxy or tunnel
+// (cloudflared, Caddy) runs. A LAN client talking to the port directly
+// cannot spoof its IP this way.
+// ponytail: a proxy on another host needs a trusted_proxies list.
+func (s *Server) viaProxy(r *http.Request) bool {
+	if !s.TrustProxy {
+		return false
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	ip := net.ParseIP(host)
+	return err == nil && ip != nil && ip.IsLoopback()
 }
 
 // clientIP is the rate-limit key.
 func (s *Server) clientIP(r *http.Request) string {
-	if s.TrustProxy {
+	if s.viaProxy(r) {
 		// The last hop is the one our proxy appended; earlier ones are client-controlled.
 		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
 			parts := strings.Split(xff, ",")

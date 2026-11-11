@@ -82,7 +82,8 @@ func TestValidateURLErrorHidesCredentials(t *testing.T) {
 // FuzzValidateURL checks that anything accepted keeps the properties FFmpeg
 // and go2rtc rely on. `go test` runs the seeds; `go test -fuzz=.` explores.
 func FuzzValidateURL(f *testing.F) {
-	for _, s := range []string{"rtsp://cam/s", "rtsps://u:p@cam:554/s?a=1", "-i x", "rtsp://c/%0a", "exec:id"} {
+	for _, s := range []string{"rtsp://cam/s", "rtsps://u:p@cam:554/s?a=1", "-i x", "rtsp://c/%0a", "exec:id",
+		"rtsp://h/x#exec:id", "RTSP://h", "rtsp://h:99999/", "rtsp://u:p%40x@h/s", "concat:rtsp://h", "rtsp://h/%0d%0aX: y"} {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, s string) {

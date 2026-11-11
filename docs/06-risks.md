@@ -20,7 +20,7 @@ Software CCTV adalah sasaran empuk, karena berisi video rumah atau kantor dan se
 | Risiko | Dampak | Mitigasi |
 | --- | --- | --- |
 | UI diekspos langsung ke internet (port forward) | Brute force, eksploitasi 0-day | Dokumentasi menyarankan VPN (Tailscale/WireGuard) atau reverse proxy + HTTPS; rate limit login; banner peringatan di UI bila diakses dari IP publik tanpa HTTPS |
-| API go2rtc terjangkau dari jaringan | **RCE**: go2rtc mendukung source `exec:` yang menjalankan perintah apa pun | API go2rtc hanya listen di `127.0.0.1` (atau unix socket); server RTSP go2rtc (`:8554`) dimatikan; proxy `/live/*` memakai whitelist path, bukan meneruskan semua |
+| API go2rtc terjangkau dari jaringan atau dari proses lain di host | **RCE**: go2rtc mendukung source `exec:` yang menjalankan perintah apa pun, dan `/api/streams` membocorkan URL kamera | API go2rtc hanya listen di `127.0.0.1` **dan** wajib password acak per start (`local_auth`, [threat model](10-threat-model.md)); server RTSP go2rtc (`:8554`) dimatikan; proxy `/live/*` memakai whitelist path, bukan meneruskan semua |
 | URL kamera disalahgunakan (`file:`, `concat:`, `exec:`, argumen diawali `-`) | Baca file lokal, injeksi argumen FFmpeg/go2rtc | Validasi skema hanya `rtsp://` / `rtsps://`; `-protocol_whitelist`; `exec.Command` tanpa shell; config go2rtc ditulis lewat YAML marshaller, bukan string concat |
 | Kredensial kamera bocor | Akses kamera oleh pihak lain | Enkripsi di DB, masking di API dan log, go2rtc hanya localhost |
 | Kehilangan `secret_key` | URL kamera terenkripsi tidak bisa dibuka | `jaga init` menampilkan peringatan untuk mem-backup key; `jaga backup` mengingatkan hal yang sama |

@@ -48,6 +48,7 @@ func TestPrecedenceFileThenEnv(t *testing.T) {
 		"JAGA_CONFIG":                     p,
 		"JAGA_STORAGE_DISK_QUOTA_PERCENT": "85",
 		"JAGA_GO2RTC_API":                 "[::1]:2000",
+		"JAGA_TRUST_PROXY":                "true",
 	}))
 	if err != nil {
 		t.Fatal(err)
@@ -55,7 +56,7 @@ func TestPrecedenceFileThenEnv(t *testing.T) {
 	if path != p {
 		t.Errorf("path = %q, want %q", path, p)
 	}
-	if cfg.Listen != ":9000" || cfg.Storage.DiskQuotaPercent != 85 || cfg.Go2RTC.API != "[::1]:2000" {
+	if cfg.Listen != ":9000" || cfg.Storage.DiskQuotaPercent != 85 || cfg.Go2RTC.API != "[::1]:2000" || !cfg.TrustProxy {
 		t.Errorf("got %+v", cfg)
 	}
 	if cfg.Storage.DefaultRetentionDays != 7 {
@@ -72,6 +73,7 @@ func TestInvalid(t *testing.T) {
 		"unknown key":        {file: "lisen: \":80\"\n"},
 		"bad yaml":           {file: "listen: [\n"},
 		"env not a number":   {env: map[string]string{"JAGA_STORAGE_DISK_QUOTA_PERCENT": "lots"}},
+		"env not a bool":     {env: map[string]string{"JAGA_TRUST_PROXY": "yes please"}},
 		"quota out of range": {env: map[string]string{"JAGA_STORAGE_DISK_QUOTA_PERCENT": "100"}},
 		"bad go2rtc mode":    {env: map[string]string{"JAGA_GO2RTC_MODE": "docker"}},
 		"go2rtc api public":  {env: map[string]string{"JAGA_GO2RTC_API": "0.0.0.0:1984"}},

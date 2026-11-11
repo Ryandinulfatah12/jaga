@@ -1,6 +1,6 @@
 module github.com/ryandinulfatah12/jaga
 
-go 1.26.10
+go 1.26.11
 
 require (
 	github.com/pressly/goose/v3 v3.29.0

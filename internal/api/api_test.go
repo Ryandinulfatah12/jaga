@@ -173,11 +173,26 @@ func TestClientIP(t *testing.T) {
 		t.Error("X-Forwarded-Proto trusted without TrustProxy")
 	}
 	s.TrustProxy = true
+	if got := s.clientIP(r); got != "10.0.0.5" || s.https(r) {
+		t.Errorf("LAN client spoofed its IP or https with TrustProxy: %q %v", got, s.https(r))
+	}
+	r.RemoteAddr = "127.0.0.1:4321" // cloudflared on the same host
 	if got := s.clientIP(r); got != "203.0.113.9" {
 		t.Errorf("trusted proxy: %q", got)
 	}
 	if !s.https(r) {
 		t.Error("X-Forwarded-Proto ignored with TrustProxy")
+	}
+	w := httptest.NewRecorder()
+	s.hsts(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})).ServeHTTP(w, r)
+	if w.Header().Get("Strict-Transport-Security") == "" {
+		t.Error("no HSTS over HTTPS")
+	}
+	r.RemoteAddr = "10.0.0.5:1234"
+	w = httptest.NewRecorder()
+	s.hsts(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})).ServeHTTP(w, r)
+	if w.Header().Get("Strict-Transport-Security") != "" {
+		t.Error("HSTS on a plain-HTTP LAN request would lock the LAN install out")
 	}
 }
 
@@ -324,7 +339,7 @@ func TestLiveAndSnapshot(t *testing.T) {
 
 	f := newFixture(t)
 	f.srv.Close()
-	f.s.Live = live.NewProxy(strings.TrimPrefix(g2r.URL, "http://"))
+	f.s.Live = live.NewProxy(strings.TrimPrefix(g2r.URL, "http://"), "")
 	changed := 0
 	f.s.CamerasChanged = func() { changed++ }
 	f.srv = httptest.NewServer(f.s.Handler())

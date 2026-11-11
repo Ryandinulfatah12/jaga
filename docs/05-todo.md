@@ -76,7 +76,7 @@ Estimasi total 7–10 minggu kerja part-time. Setiap fase menghasilkan sesuatu y
 - [x] Backup/restore konfigurasi: `jaga backup <file>` (salinan SQLite konsisten via `VACUUM INTO`, bukan JSON: satu file, bisa langsung dipakai lagi). Restore = salin balik. ponytail: export JSON tanpa hash bila nanti perlu migrasi antar versi besar
 - [x] Dockerfile multi-stage (debian-slim, FFmpeg LGPL ter-pin, user non-root) + docker-compose + README instalasi Docker (build sendiri sampai image dirilis)
 - [x] Panduan "akses dari luar rumah" (ringkas, di README bagian Privacy): Tailscale/WireGuard, peringatan jangan port forward. Panduan reverse proxy + HTTPS menyusul bersama `trust_proxy`
-- [ ] Review keamanan mandiri sebelum rilis: threat model, fuzz parser segment list & URL
+- [x] Review keamanan mandiri sebelum rilis: threat model ([10-threat-model.md](10-threat-model.md)), fuzz `ValidateURL` + `recordingPath`. Diperbaiki: API go2rtc dikunci password (loopback juga), `trust_proxy` untuk tunnel/reverse proxy (hanya dari loopback) + HSTS, batas 2 export paralel
 - [ ] Rilis v0.1 via GoReleaser: binary amd64 + arm64, image GHCR, checksum, SBOM, tanda tangan (cosign/attestation), tarball source FFmpeg ([checklist rilis](09-legal.md#checklist-setiap-rilis))
 
 ### Backlog (setelah v0.1)

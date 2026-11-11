@@ -29,8 +29,9 @@ type Proxy struct {
 	streams atomic.Pointer[map[string]int64]
 }
 
-// NewProxy proxies to the go2rtc API at addr (host:port).
-func NewProxy(addr string) *Proxy {
+// NewProxy proxies to the go2rtc API at addr (host:port), signing in with
+// APIUser and pass. pass "" sends no credentials (external go2rtc without auth).
+func NewProxy(addr, pass string) *Proxy {
 	target := &url.URL{Scheme: "http", Host: addr}
 	p := &Proxy{}
 	p.SetStreams(nil)
@@ -45,6 +46,10 @@ func NewProxy(addr string) *Proxy {
 			// host, which is loopback, so drop it.
 			r.Out.Header.Del("Origin")
 			r.Out.Header.Del("Cookie") // the Jaga session is none of go2rtc's business
+			r.Out.Header.Del("Authorization")
+			if pass != "" {
+				r.Out.SetBasicAuth(APIUser, pass)
+			}
 		},
 		ModifyResponse: func(resp *http.Response) error {
 			// go2rtc answers 200 with an empty body when the camera cannot be

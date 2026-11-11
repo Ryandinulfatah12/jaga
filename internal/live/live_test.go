@@ -25,7 +25,7 @@ func cam(id int64, main, sub string, enabled bool) camera.Camera {
 }
 
 func TestBuildConfig(t *testing.T) {
-	cfg, err := BuildConfig("127.0.0.1:1984", 8555, []camera.Camera{
+	cfg, err := BuildConfig("127.0.0.1:1984", 8555, "g2r-pass", []camera.Camera{
 		cam(7, "rtsp://admin:hunter2@10.0.0.7/main", "rtsp://admin:hunter2@10.0.0.7/sub", true),
 		cam(2, "rtsp://10.0.0.2/main", "", true),
 		cam(3, "rtsp://10.0.0.3/main", "", false),
@@ -53,7 +53,10 @@ func TestBuildConfig(t *testing.T) {
 			t.Errorf("stream %s = %q, want %q", k, y.Streams[k], v)
 		}
 	}
-	if strings.Join(cfg.Env, " ") != "JAGA_CAM_1=rtsp://10.0.0.2/main JAGA_CAM_2=rtsp://admin:hunter2@10.0.0.7/main JAGA_CAM_3=rtsp://admin:hunter2@10.0.0.7/sub" {
+	if y.API.Username != APIUser || y.API.Password != "${JAGA_G2R_PASS}" || !y.API.LocalAuth || strings.Contains(string(cfg.YAML), "g2r-pass") {
+		t.Errorf("api auth = %+v (the password must come from the env, loopback included)", y.API)
+	}
+	if strings.Join(cfg.Env, " ") != "JAGA_G2R_PASS=g2r-pass JAGA_CAM_1=rtsp://10.0.0.2/main JAGA_CAM_2=rtsp://admin:hunter2@10.0.0.7/main JAGA_CAM_3=rtsp://admin:hunter2@10.0.0.7/sub" {
 		t.Errorf("env = %v", cfg.Env)
 	}
 	if cfg.Streams["cam7_sub"] != 7 || len(cfg.Streams) != 3 {
@@ -76,11 +79,11 @@ func TestBuildConfig(t *testing.T) {
 func TestBuildConfigRejectsBadURL(t *testing.T) {
 	// The store validates too; the go2rtc config is checked on its own anyway.
 	for _, u := range []string{"exec:rm -rf /", "ffmpeg:rtsp://x/s#video=copy", "rtsp://x/s\nstreams:"} {
-		if _, err := BuildConfig("127.0.0.1:1984", 8555, []camera.Camera{cam(1, u, "", true)}); err == nil {
+		if _, err := BuildConfig("127.0.0.1:1984", 8555, "g2r-pass", []camera.Camera{cam(1, u, "", true)}); err == nil {
 			t.Errorf("accepted %q", u)
 		}
 	}
-	if _, err := BuildConfig("1984", 8555, nil); err == nil {
+	if _, err := BuildConfig("1984", 8555, "g2r-pass", nil); err == nil {
 		t.Error("accepted api without host")
 	}
 }
@@ -88,6 +91,10 @@ func TestBuildConfigRejectsBadURL(t *testing.T) {
 func TestProxyWhitelist(t *testing.T) {
 	var got []string
 	g2r := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if u, p, ok := r.BasicAuth(); !ok || u != APIUser || p != "g2r-pass" {
+			http.Error(w, "unauthorized", http.StatusUnauthorized) // go2rtc with local_auth
+			return
+		}
 		got = append(got, r.Method+" "+r.URL.RequestURI()+" origin="+r.Header.Get("Origin")+" cookie="+r.Header.Get("Cookie"))
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		if r.URL.Query().Get("src") == "down" {
@@ -97,7 +104,7 @@ func TestProxyWhitelist(t *testing.T) {
 		_, _ = io.WriteString(w, "jpeg")
 	}))
 	defer g2r.Close()
-	p := NewProxy(strings.TrimPrefix(g2r.URL, "http://"))
+	p := NewProxy(strings.TrimPrefix(g2r.URL, "http://"), "g2r-pass")
 	p.SetStreams(map[string]int64{"cam1": 1, "cam1_sub": 1})
 	srv := httptest.NewServer(p)
 	defer srv.Close()

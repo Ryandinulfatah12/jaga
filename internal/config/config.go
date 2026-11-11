@@ -37,6 +37,10 @@ type Config struct {
 	Go2RTC     Go2RTC  `yaml:"go2rtc"`
 	Storage    Storage `yaml:"storage"`
 	SecretKey  string  `yaml:"secret_key"`
+	// TrustProxy: requests come through a reverse proxy or tunnel (e.g.
+	// Cloudflare Tunnel) that sets X-Forwarded-For/-Proto. Only then is the
+	// client IP (login rate limit) and HTTPS (Secure cookie) read from them.
+	TrustProxy bool `yaml:"trust_proxy"`
 }
 
 // Go2RTC configures the live-view sidecar.
@@ -126,7 +130,7 @@ func readFile(path string, cfg *Config) error {
 	return nil
 }
 
-// applyEnv overrides every string/int field whose JAGA_<PATH> variable is set.
+// applyEnv overrides every string/int/bool field whose JAGA_<PATH> variable is set.
 func applyEnv(v reflect.Value, prefix string, lookup func(string) (string, bool)) error {
 	t := v.Type()
 	for i := range t.NumField() {
@@ -151,6 +155,12 @@ func applyEnv(v reflect.Value, prefix string, lookup func(string) (string, bool)
 				return fmt.Errorf("%w: %s=%q is not a number", ErrInvalid, name, s)
 			}
 			f.SetInt(int64(n))
+		case reflect.Bool:
+			b, err := strconv.ParseBool(s)
+			if err != nil {
+				return fmt.Errorf("%w: %s=%q is not true or false", ErrInvalid, name, s)
+			}
+			f.SetBool(b)
 		default:
 			panic("config: unsupported field kind " + f.Kind().String())
 		}

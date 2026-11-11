@@ -10,6 +10,7 @@
 package live
 
 import (
+	"crypto/rand"
 	"fmt"
 	"net"
 	"os"
@@ -34,7 +35,10 @@ func StreamName(id int64, sub bool) string {
 
 type yamlConfig struct {
 	API struct {
-		Listen string `yaml:"listen"`
+		Listen    string `yaml:"listen"`
+		Username  string `yaml:"username,omitempty"`
+		Password  string `yaml:"password,omitempty"`
+		LocalAuth bool   `yaml:"local_auth,omitempty"`
 	} `yaml:"api"`
 	RTSP struct {
 		Listen string `yaml:"listen"`
@@ -59,21 +63,36 @@ type Config struct {
 	Streams map[string]int64
 }
 
+// APIUser is the go2rtc API username; the password is per Jaga process
+// (NewAPIPassword) and reaches go2rtc only through its environment.
+const APIUser = "jaga"
+
+// NewAPIPassword returns a random go2rtc API password.
+func NewAPIPassword() string { return rand.Text() }
+
 // BuildConfig returns the go2rtc config for the enabled cameras. Disabled
 // cameras get no stream. URLs are validated again here: the config is a
 // trust boundary even though the store already validated them.
-func BuildConfig(api string, webrtcPort int, cams []camera.Camera) (Config, error) {
+//
+// apiPass locks the go2rtc API, loopback included (local_auth): without it
+// any local process could POST /api/config with an exec: source and run
+// commands as jaga, or read the camera URLs.
+func BuildConfig(api string, webrtcPort int, apiPass string, cams []camera.Camera) (Config, error) {
 	if _, _, err := net.SplitHostPort(api); err != nil {
 		return Config{}, fmt.Errorf("go2rtc api %q: %w", api, err)
 	}
+	if apiPass == "" {
+		return Config{}, fmt.Errorf("go2rtc api password is empty")
+	}
 	var y yamlConfig
 	y.API.Listen = api
+	y.API.Username, y.API.Password, y.API.LocalAuth = APIUser, "${JAGA_G2R_PASS}", true
 	y.RTSP.Listen = "" // RTSP server off: it would re-publish every camera without auth
 	y.WebRTC.Listen = ":" + strconv.Itoa(webrtcPort)
 	y.Log.Level = "warn"
 	y.Streams = map[string]string{}
 
-	out := Config{Streams: map[string]int64{}}
+	out := Config{Streams: map[string]int64{}, Env: []string{"JAGA_G2R_PASS=" + apiPass}}
 	sorted := append([]camera.Camera(nil), cams...)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].ID < sorted[j].ID })
 	n := 0

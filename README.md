@@ -90,7 +90,7 @@ make web build
 
 Jaga never sends data anywhere: no telemetry, no analytics, no cloud account. Audio recording is off by default. If you install cameras, you are responsible for following local laws on video surveillance and data protection. In Indonesia, that includes UU No. 27/2022 (PDP).
 
-Do not expose Jaga directly to the internet (no port forwarding on the router). To watch from outside, use a VPN such as [Tailscale](https://tailscale.com) or WireGuard: install it on the server and your phone, then open `http://<server-vpn-ip>:8080`. A reverse proxy with HTTPS works too, but then the proxy is what keeps Jaga safe. See [SECURITY.md](SECURITY.md).
+Do not expose Jaga directly to the internet (no port forwarding on the router). To watch from outside, use a VPN such as [Tailscale](https://tailscale.com) or WireGuard: install it on the server and your phone, then open `http://<server-vpn-ip>:8080`. A reverse proxy or tunnel with HTTPS (Caddy, Cloudflare Tunnel) works too: run it on the same host, set `JAGA_TRUST_PROXY=true` in `.env` so the login rate limit sees the real client IP, and consider an extra login in front (Cloudflare Access), since Jaga has no 2FA yet. See [SECURITY.md](SECURITY.md) and the [threat model](docs/10-threat-model.md).
 
 ## Documentation
 
