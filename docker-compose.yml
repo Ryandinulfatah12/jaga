@@ -17,6 +17,8 @@ services:
     environment:
       JAGA_SECRET_KEY: ${JAGA_SECRET_KEY:?set JAGA_SECRET_KEY in .env}
       JAGA_LISTEN: ${JAGA_LISTEN:-:8080}
+      # true behind a reverse proxy / tunnel on this host (Cloudflare Tunnel, Caddy)
+      JAGA_TRUST_PROXY: ${JAGA_TRUST_PROXY:-false}
       TZ: ${TZ:-Asia/Jakarta}
     volumes:
       - ${JAGA_DATA:-./data}:/data

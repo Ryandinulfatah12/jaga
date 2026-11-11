@@ -352,7 +352,8 @@ func (e *env) start() int {
 	}
 	lv := e.liveView(cfg, all)
 	apiSrv := &api.Server{Auth: users, Cameras: cams, Log: e.log, FFprobe: recorder.FFprobePath(ffmpeg), Status: hub, UI: web.Handler(),
-		DB: conn, DataDir: cfg.DataDir, FFmpeg: ffmpeg, Started: time.Now(), QuotaPercent: cfg.Storage.DiskQuotaPercent}
+		DB: conn, DataDir: cfg.DataDir, FFmpeg: ffmpeg, Started: time.Now(), QuotaPercent: cfg.Storage.DiskQuotaPercent,
+		TrustProxy: cfg.TrustProxy}
 	for _, t := range [][2]string{{"ffmpeg", ffmpeg}, {"go2rtc", cfg.Go2RTC.Path}} {
 		if v, err := toolVersion(e.ctx, t[0], t[1]); err == nil {
 			apiSrv.Tools = append(apiSrv.Tools, v)
@@ -400,22 +401,27 @@ type liveState struct {
 	reload chan live.Config
 	cfg    config.Config
 	log    *slog.Logger
+	pass   string // go2rtc API password, new every start
 }
 
 // liveView returns nil when live view cannot run. That only disables live
 // view and snapshots, never recording.
 func (e *env) liveView(cfg config.Config, cams []camera.Camera) *liveState {
-	lc, err := live.BuildConfig(cfg.Go2RTC.API, cfg.Go2RTC.WebRTCPort, cams)
+	pass := live.NewAPIPassword()
+	lc, err := live.BuildConfig(cfg.Go2RTC.API, cfg.Go2RTC.WebRTCPort, pass, cams)
 	if err != nil {
 		e.log.Error("live view disabled: go2rtc config", "err", err)
 		return nil
 	}
-	lv := &liveState{proxy: live.NewProxy(cfg.Go2RTC.API), first: lc, reload: make(chan live.Config, 1), cfg: cfg, log: e.log}
+	lv := &liveState{proxy: live.NewProxy(cfg.Go2RTC.API, pass), first: lc, reload: make(chan live.Config, 1), cfg: cfg, log: e.log, pass: pass}
 	lv.proxy.SetStreams(lc.Streams)
 	if cfg.Go2RTC.Mode == "external" {
-		// ponytail: external go2rtc keeps its own config; stream names must
-		// follow live.StreamName (cam<ID>, cam<ID>_sub). Push config through
-		// its API if users ask for it.
+		// ponytail: external go2rtc keeps its own config (and API auth);
+		// stream names must follow live.StreamName (cam<ID>, cam<ID>_sub).
+		// Add go2rtc.api_password and push config through its API if users
+		// ask for it.
+		lv.proxy = live.NewProxy(cfg.Go2RTC.API, "")
+		lv.proxy.SetStreams(lc.Streams)
 		e.log.Info("live view via external go2rtc", "api", cfg.Go2RTC.API)
 		return lv
 	}
@@ -464,7 +470,7 @@ func camerasChanged(ctx context.Context, log *slog.Logger, cams *camera.Store, s
 // apply rebuilds the go2rtc config and hands it over. The newest config
 // wins if one is still pending.
 func (lv *liveState) apply(all []camera.Camera) {
-	lc, err := live.BuildConfig(lv.cfg.Go2RTC.API, lv.cfg.Go2RTC.WebRTCPort, all)
+	lc, err := live.BuildConfig(lv.cfg.Go2RTC.API, lv.cfg.Go2RTC.WebRTCPort, lv.pass, all)
 	if err != nil {
 		lv.log.Error("live view reload", "err", err)
 		return

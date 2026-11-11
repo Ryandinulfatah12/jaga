@@ -21,6 +21,10 @@ import (
 // maxClip bounds one export: two hours of a 2K stream is a few GB.
 const maxClip = 2 * time.Hour
 
+// clipSlots caps concurrent exports, one FFmpeg each, so a signed-in user
+// cannot fill the CPU and disk bandwidth the recorders need.
+var clipSlots = make(chan struct{}, 2)
+
 // clip answers GET /cameras/{id}/clip?from=&to= (Unix ms): the recorded
 // segments in [from, to) joined into one MP4 by FFmpeg's concat demuxer
 // with -c copy, streamed straight to the browser (no temp file). Cuts land
@@ -48,6 +52,13 @@ func (s *Server) clip(w http.ResponseWriter, r *http.Request) {
 	cam, err := s.Cameras.Get(r.Context(), id)
 	if err != nil {
 		s.cameraError(w, r, err)
+		return
+	}
+	select {
+	case clipSlots <- struct{}{}:
+		defer func() { <-clipSlots }()
+	default:
+		writeError(w, http.StatusTooManyRequests, "two exports are already running, try again when one finishes")
 		return
 	}
 	list, first, err := s.concatList(r.Context(), id, from, to)
@@ -132,7 +143,8 @@ func (s *Server) concatList(ctx context.Context, id, from, to int64) (string, in
 			return "", 0, err
 		}
 		path, ok := recordingPath(s.DataDir, rel)
-		if !ok {
+		// A line break would start a new concat directive (file, inpoint...).
+		if !ok || strings.ContainsAny(path, "\r\n") {
 			continue
 		}
 		if _, err := os.Stat(path); err != nil {

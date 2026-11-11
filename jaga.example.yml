@@ -10,6 +10,11 @@ go2rtc:
   api: 127.0.0.1:1984 # wajib loopback: API go2rtc bisa menjalankan perintah
   path: go2rtc        # binary go2rtc (mode embedded)
   webrtc_port: 8555   # TCP+UDP, harus bisa dijangkau browser
+# true bila Jaga di belakang reverse proxy / tunnel (Cloudflare Tunnel, Caddy,
+# nginx) yang mengisi X-Forwarded-For dan X-Forwarded-Proto: IP klien untuk
+# rate limit login dan cookie Secure diambil dari header itu. Jangan true kalau
+# Jaga bisa diakses langsung tanpa proxy: header itu bisa dipalsukan.
+trust_proxy: false
 storage:
   disk_quota_percent: 90
   default_retention_days: 7
