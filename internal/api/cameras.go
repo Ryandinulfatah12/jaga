@@ -4,14 +4,17 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/ryandinulfatah12/jaga/internal/camera"
 	"github.com/ryandinulfatah12/jaga/internal/live"
+	"github.com/ryandinulfatah12/jaga/internal/onvif"
 	"github.com/ryandinulfatah12/jaga/internal/probe"
 )
 
@@ -286,4 +289,38 @@ func (s *Server) snapshot(w http.ResponseWriter, r *http.Request) {
 	r2.URL.Path = "/live/api/frame.jpeg"
 	r2.URL.RawQuery = "src=" + src
 	s.Live.ServeHTTP(w, r2)
+}
+
+// discover answers POST /cameras/discover (admin): ONVIF cameras on the
+// local network, marked when an existing camera already uses that host.
+// POST because it sends packets out; it takes 3 s.
+func (s *Server) discover(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+	found, err := s.discoverONVIF(ctx)
+	if err != nil {
+		s.Log.Warn("onvif discovery", "err", err)
+		writeError(w, http.StatusBadGateway, "discovery failed")
+		return
+	}
+	cams, err := s.Cameras.List(r.Context())
+	if err != nil {
+		s.internal(w, r, err)
+		return
+	}
+	used := map[string]bool{}
+	for _, c := range cams {
+		if u, err := url.Parse(c.MainURL); err == nil {
+			used[u.Hostname()] = true
+		}
+	}
+	type out struct {
+		onvif.Device
+		Added bool `json:"added"`
+	}
+	res := make([]out, 0, len(found))
+	for _, d := range found {
+		res = append(res, out{d, used[d.Host]})
+	}
+	writeJSON(w, http.StatusOK, res)
 }

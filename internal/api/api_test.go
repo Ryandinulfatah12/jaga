@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -24,6 +25,7 @@ import (
 	"github.com/ryandinulfatah12/jaga/internal/camera"
 	"github.com/ryandinulfatah12/jaga/internal/db"
 	"github.com/ryandinulfatah12/jaga/internal/live"
+	"github.com/ryandinulfatah12/jaga/internal/onvif"
 	"github.com/ryandinulfatah12/jaga/internal/onvif/onviftest"
 	"github.com/ryandinulfatah12/jaga/internal/probe"
 	"github.com/ryandinulfatah12/jaga/internal/status"
@@ -695,5 +697,29 @@ func TestClip(t *testing.T) {
 	}
 	if code, _ := f.do(t, &http.Client{}, "GET", fmt.Sprintf("/api/v1/cameras/%d/clip?from=0&to=1", c.ID), ""); code != 401 {
 		t.Errorf("anonymous = %d", code)
+	}
+}
+
+func TestDiscover(t *testing.T) {
+	f := newFixture(t)
+	f.s.discoverONVIF = func(ctx context.Context) ([]onvif.Device, error) {
+		if _, ok := ctx.Deadline(); !ok {
+			t.Error("discovery without a deadline")
+		}
+		return []onvif.Device{{Host: "10.0.0.2", Port: 2020, Name: "C211", Model: "C211"}, {Host: "10.0.0.3", Port: 80}}, nil
+	}
+	admin := f.client(t, "admin", "admin-pass")
+	f.do(t, admin, "POST", "/api/v1/cameras", `{"name":"c","main_url":"rtsp://u:p@10.0.0.2/main"}`)
+	code, body := f.do(t, admin, "POST", "/api/v1/cameras/discover", "")
+	if code != 200 || body != `[{"host":"10.0.0.2","port":2020,"name":"C211","model":"C211","added":true},{"host":"10.0.0.3","port":80,"added":false}]`+"\n" {
+		t.Errorf("discover = %d %s", code, body)
+	}
+	viewer := f.client(t, "viewer", "viewer-pass")
+	if code, _ := f.do(t, viewer, "POST", "/api/v1/cameras/discover", ""); code != 403 {
+		t.Errorf("viewer = %d, want 403", code)
+	}
+	f.s.discoverONVIF = func(context.Context) ([]onvif.Device, error) { return nil, errors.New("no route") }
+	if code, _ := f.do(t, admin, "POST", "/api/v1/cameras/discover", ""); code != 502 {
+		t.Errorf("failure = %d, want 502", code)
 	}
 }
