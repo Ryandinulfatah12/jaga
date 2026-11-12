@@ -72,7 +72,7 @@ Estimasi total 7–10 minggu kerja part-time. Setiap fase menghasilkan sesuatu y
 
 - [ ] Benchmark 16 kamera di mini PC: catat CPU, RAM, IO, bandingkan dengan target
 - [ ] Uji ketahanan 72 jam (memory leak, jumlah goroutine, file descriptor)
-- [ ] Auto-discovery ONVIF (WS-Discovery) di jaringan lokal
+- [x] Auto-discovery ONVIF (WS-Discovery) di jaringan lokal: tombol "Find cameras" di Add camera (`POST /cameras/discover`, admin, 3 s), mengisi host + port ONVIF (+ path `/stream1`/`/stream2` untuk Tapo); user/password tetap diketik admin. Stdlib `net`, tanpa dependency
 - [x] Backup/restore konfigurasi: `jaga backup <file>` (salinan SQLite konsisten via `VACUUM INTO`, bukan JSON: satu file, bisa langsung dipakai lagi). Restore = salin balik. ponytail: export JSON tanpa hash bila nanti perlu migrasi antar versi besar
 - [x] Dockerfile multi-stage (debian-slim, FFmpeg LGPL ter-pin, user non-root) + docker-compose + README instalasi Docker (build sendiri sampai image dirilis)
 - [x] Panduan "akses dari luar rumah" (ringkas, di README bagian Privacy): Tailscale/WireGuard, peringatan jangan port forward. Panduan reverse proxy + HTTPS menyusul bersama `trust_proxy`

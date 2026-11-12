@@ -21,6 +21,7 @@ import (
 	"github.com/ryandinulfatah12/jaga/internal/auth"
 	"github.com/ryandinulfatah12/jaga/internal/camera"
 	"github.com/ryandinulfatah12/jaga/internal/live"
+	"github.com/ryandinulfatah12/jaga/internal/onvif"
 	"github.com/ryandinulfatah12/jaga/internal/probe"
 	"github.com/ryandinulfatah12/jaga/internal/status"
 )
@@ -63,8 +64,9 @@ type Server struct {
 	// Limit is the login rate limit; nil means 5 per minute per IP.
 	Limit *auth.Limiter
 	ptzs  ptzCache
-	// probe is replaceable in tests.
-	probe func(ctx context.Context, ffprobe, url string, sample time.Duration) (probe.Result, error)
+	// probe and discoverONVIF are replaceable in tests.
+	probe         func(ctx context.Context, ffprobe, url string, sample time.Duration) (probe.Result, error)
+	discoverONVIF func(ctx context.Context) ([]onvif.Device, error)
 }
 
 type ctxKey struct{}
@@ -76,6 +78,9 @@ func (s *Server) Handler() http.Handler {
 	}
 	if s.probe == nil {
 		s.probe = probe.Probe
+	}
+	if s.discoverONVIF == nil {
+		s.discoverONVIF = onvif.Discover
 	}
 	if s.Status == nil {
 		s.Status = status.NewHub()
@@ -89,6 +94,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /api/v1/auth/me", user(s.me))
 	mux.Handle("GET /api/v1/cameras", user(s.listCameras))
 	mux.Handle("POST /api/v1/cameras", admin(s.createCamera))
+	mux.Handle("POST /api/v1/cameras/discover", admin(s.discover))
 	mux.Handle("GET /api/v1/cameras/{id}", user(s.getCamera))
 	mux.Handle("PATCH /api/v1/cameras/{id}", admin(s.patchCamera))
 	mux.Handle("DELETE /api/v1/cameras/{id}", admin(s.deleteCamera))

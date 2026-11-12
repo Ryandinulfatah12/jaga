@@ -67,6 +67,31 @@
     }
   }
 
+  // ONVIF discovery fills host and ONVIF port; user, password and stream
+  // path stay with the admin (Tapo: /stream1 and /stream2).
+  let found = $state(null) // null | { busy } | { list } | { error }
+  async function discover() {
+    found = { busy: true }
+    try {
+      found = { list: await post('/cameras/discover') }
+    } catch (err) {
+      found = { error: err.message }
+    }
+  }
+  function pick(d) {
+    const tapo = /^C\d{3}/i.test(d.model ?? '')
+    if (!form.name.trim()) form.name = d.name || d.model || d.host
+    form.main_url = `rtsp://USER:PASSWORD@${d.host}:554${tapo ? '/stream1' : '/'}`
+    form.sub_url = tapo ? `rtsp://USER:PASSWORD@${d.host}:554/stream2` : ''
+    form.onvif_port = d.port
+    found = null
+    queueMicrotask(() => {
+      const el = document.getElementById('f-main')
+      el?.focus()
+      el?.setSelectionRange(7, 20) // select USER:PASSWORD
+    })
+  }
+
   async function runTest(stream) {
     test = { busy: true }
     try {
@@ -147,6 +172,36 @@
   <div class="fixed inset-0 z-30 grid place-items-center bg-black/60 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="cam-title">
     <form onsubmit={save} class="glass rise max-h-full w-full max-w-lg overflow-y-auto rounded-lg p-6 shadow-2xl shadow-black/50">
       <h2 id="cam-title" class="mb-4 text-lg font-semibold">{editing === 'new' ? 'Add camera' : 'Edit ' + editing.name}</h2>
+
+      {#if editing === 'new'}
+        <div class="mb-4 rounded-md border border-line p-3">
+          <div class="flex items-center gap-3">
+            <button type="button" class="shrink-0 rounded-md border border-line px-3 py-1.5 whitespace-nowrap hover:border-accent hover:text-accent-fg disabled:opacity-60" onclick={discover} disabled={found?.busy}>
+              {found?.busy ? 'Searching…' : 'Find cameras'}
+            </button>
+            <span class="text-xs text-muted">ONVIF cameras on this network, ~3&nbsp;s</span>
+          </div>
+          {#if found?.error}
+            <p class="mt-2 text-accent-fg" role="alert">{found.error}</p>
+          {:else if found?.list}
+            {#if found.list.length === 0}
+              <p class="mt-2 text-muted" role="status">No ONVIF camera answered. Turn ONVIF on in the camera app, or type the URL below.</p>
+            {:else}
+              <ul class="mt-2 space-y-1" aria-label="Cameras found">
+                {#each found.list as d (d.host)}
+                  <li>
+                    <button type="button" class="flex w-full items-center gap-3 rounded-md px-2 py-1.5 text-left hover:bg-raised/60 disabled:opacity-60" onclick={() => pick(d)} disabled={d.added}>
+                      <span class="font-medium">{d.name || d.model || 'Camera'}</span>
+                      <span class="font-mono text-xs text-muted">{d.host} · ONVIF {d.port}</span>
+                      <span class="ml-auto text-xs {d.added ? 'text-muted' : 'text-accent-fg'}">{d.added ? '✓ already added' : 'Use →'}</span>
+                    </button>
+                  </li>
+                {/each}
+              </ul>
+            {/if}
+          {/if}
+        </div>
+      {/if}
 
       <label class="mb-1 block text-muted" for="f-name">Name</label>
       <input id="f-name" bind:value={form.name} required maxlength="64" class="{input} mb-3" />

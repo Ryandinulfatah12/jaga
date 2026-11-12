@@ -38,6 +38,8 @@ Review mandiri sebelum rilis v0.1 (November 2026), dari source di `main` dan ins
 - **Header**: CSP ketat tanpa inline/CDN, `nosniff`, `frame-ancestors 'none'`, `no-referrer`.
 - **Error**: error 500 generik ke klien, detail hanya di log. Password kamera di-mask di log dan API.
 
+- **Discovery ONVIF**: hanya admin, POST (CSRF), satu paket multicast di LAN, hasil dari perangkat tak dikenal dibatasi (XAddr wajib IP pengirim, port valid, nama/model maks 64 karakter tanpa karakter kontrol, maks 256 perangkat). Fuzz `FuzzParseProbeMatch`. Discovery tidak pernah mengirim kredensial.
+
 ## Risiko yang diterima (v0.1)
 
 - **Port WebRTC 8555 go2rtc terbuka di semua interface.** Dibutuhkan browser untuk WebRTC. Port ini hanya bicara ICE/DTLS untuk sesi yang sudah dibuat lewat API (yang kini dikunci), tapi tetap permukaan serangan go2rtc. Saat ini UI memakai MSE lewat WebSocket, jadi port ini bisa ditutup di firewall dari internet.
